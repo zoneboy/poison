@@ -1,9 +1,12 @@
 {
   "name": "neon-football-predictor",
   "version": "1.0.0",
-  "description": "Single File SPA",
+  "description": "Netlify Function App",
   "scripts": {
-    "build": "sed -i \"s|__DATABASE_URL__|${DATABASE_URL}|g\" index.html"
+    "build": "echo 'Building...'"
   },
-  "keywords": []
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.0",
+    "drizzle-orm": "^0.30.9"
+  }
 }
