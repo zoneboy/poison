@@ -3,11 +3,10 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
+// drizzle.config.ts
 export default defineConfig({
-  schema: "./db/schema.ts",
-  out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    connectionString: process.env.DATABASE_URL!,
   },
 });
