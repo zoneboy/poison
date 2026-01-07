@@ -39,29 +39,52 @@ const poisson = (k, lambda) => {
 
 // --- HANDLER ---
 exports.handler = async (event, context) => {
+    console.log("Function invoked:", event.httpMethod);
+
     // 1. Initialize DB
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
-        return { statusCode: 500, body: JSON.stringify({ error: "Server Configuration Error: DATABASE_URL missing" }) };
+        console.error("DATABASE_URL is missing in environment variables.");
+        return { 
+            statusCode: 500, 
+            body: JSON.stringify({ error: "Server Configuration Error: DATABASE_URL missing. Check Netlify Site Settings." }) 
+        };
     }
     
-    const sql = neon(dbUrl);
-    const db = drizzle(sql, { schema });
-
-    // 2. Parse Request
-    const body = event.body ? JSON.parse(event.body) : {};
-    const { action, payload } = body;
-
     try {
+        const sql = neon(dbUrl);
+        const db = drizzle(sql, { schema });
+
+        // 2. Parse Request
+        let body = {};
+        try {
+            body = event.body ? JSON.parse(event.body) : {};
+        } catch (e) {
+            console.error("Failed to parse request body:", event.body);
+            return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON body" }) };
+        }
+        
+        const { action, payload } = body;
+        console.log("Action:", action);
+
         let result;
 
         switch (action) {
+            case 'health':
+                // Simple DB check
+                await db.select().from(leagues).limit(1);
+                result = { status: "ok", message: "Database connected" };
+                break;
+
             case 'getLeagues':
                 result = await db.select().from(leagues).orderBy(asc(leagues.name));
                 break;
 
             case 'getTeams':
-                result = await db.select().from(teams).where(eq(teams.league_id, payload.leagueId)).orderBy(asc(teams.name));
+                if (!payload?.leagueId) throw new Error("Missing leagueId");
+                result = await db.select().from(teams)
+                    .where(eq(teams.league_id, payload.leagueId))
+                    .orderBy(asc(teams.name));
                 break;
 
             case 'createLeague':
@@ -116,11 +139,12 @@ exports.handler = async (event, context) => {
                 break;
 
             case 'predict':
-                const leagueData = await db.query.leagues.findFirst({ where: eq(leagues.id, payload.leagueId) });
-                const homeTeam = await db.query.teams.findFirst({ where: eq(teams.id, payload.homeTeamId) });
-                const awayTeam = await db.query.teams.findFirst({ where: eq(teams.id, payload.awayTeamId) });
+                // Robust Fetching without Relational API magic
+                const [leagueData] = await db.select().from(leagues).where(eq(leagues.id, payload.leagueId)).limit(1);
+                const [homeTeam] = await db.select().from(teams).where(eq(teams.id, payload.homeTeamId)).limit(1);
+                const [awayTeam] = await db.select().from(teams).where(eq(teams.id, payload.awayTeamId)).limit(1);
 
-                if (!leagueData || !homeTeam || !awayTeam) throw new Error("Invalid selection");
+                if (!leagueData || !homeTeam || !awayTeam) throw new Error("Invalid selection - Data not found");
 
                 const safeDiv = (num, den) => (den === 0 ? 0 : num / den);
 
@@ -168,7 +192,7 @@ exports.handler = async (event, context) => {
         };
 
     } catch (error) {
-        console.error("API Error:", error);
+        console.error("API Execution Error:", error);
         return {
             statusCode: 500,
             body: JSON.stringify({ error: error.message || "Internal Server Error" })
