@@ -37,18 +37,32 @@ const poisson = (k, lambda) => {
     return (Math.exp(-lambda) * Math.pow(lambda, k)) / factorial(k);
 };
 
+// --- RESPONSE HELPER ---
+const response = (statusCode, body) => ({
+    statusCode,
+    headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    },
+    body: JSON.stringify(body)
+});
+
 // --- HANDLER ---
 exports.handler = async (event, context) => {
-    console.log("Function invoked:", event.httpMethod);
+    console.log("Function invoked:", event.httpMethod, event.path);
+
+    // Handle CORS preflight
+    if (event.httpMethod === 'OPTIONS') {
+        return response(200, { message: 'OK' });
+    }
 
     // 1. Initialize DB
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
         console.error("DATABASE_URL is missing in environment variables.");
-        return { 
-            statusCode: 500, 
-            body: JSON.stringify({ error: "Server Configuration Error: DATABASE_URL missing. Check Netlify Site Settings." }) 
-        };
+        return response(500, { error: "Server Configuration Error: DATABASE_URL missing. Check Netlify Site Settings." });
     }
     
     try {
@@ -61,7 +75,7 @@ exports.handler = async (event, context) => {
             body = event.body ? JSON.parse(event.body) : {};
         } catch (e) {
             console.error("Failed to parse request body:", event.body);
-            return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON body" }) };
+            return response(400, { error: "Invalid JSON body" });
         }
         
         const { action, payload } = body;
@@ -183,19 +197,13 @@ exports.handler = async (event, context) => {
                 break;
 
             default:
-                return { statusCode: 400, body: JSON.stringify({ error: "Invalid action" }) };
+                return response(400, { error: "Invalid action" });
         }
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify(result)
-        };
+        return response(200, result);
 
     } catch (error) {
         console.error("API Execution Error:", error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: error.message || "Internal Server Error" })
-        };
+        return response(500, { error: error.message || "Internal Server Error" });
     }
 };
