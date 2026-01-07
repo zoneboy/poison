@@ -1,0 +1,9 @@
+{
+  "name": "neon-football-predictor",
+  "version": "1.0.0",
+  "description": "Single File SPA",
+  "scripts": {
+    "build": "echo 'No build required for this static app'"
+  },
+  "keywords": []
+}
