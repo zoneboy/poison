@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getLeagues, getTeams, calculatePrediction, type League, type Team, type PredictionResult } from './actions';
-import { clsx } from 'clsx';
+import clsx from 'clsx';
 import { Loader2, Calculator, AlertTriangle, Database, Terminal, Save, Plug } from 'lucide-react';
 
 export default function Home() {
