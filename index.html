@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Football Predictor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Polyfill process for libraries
+      window.process = { env: { NODE_ENV: 'production' } };
+      
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              neon: {
+                400: '#4ade80',
+                500: '#22c55e',
+                900: '#14532d',
+              }
+            },
+            animation: {
+              'spin-slow': 'spin 3s linear infinite',
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "clsx": "https://esm.sh/clsx@2.1.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.368.0",
+        "@neondatabase/serverless": "https://esm.sh/@neondatabase/serverless@0.9.0",
+        "drizzle-orm": "https://esm.sh/drizzle-orm@0.30.9",
+        "drizzle-orm/pg-core": "https://esm.sh/drizzle-orm@0.30.9/pg-core",
+        "drizzle-orm/neon-http": "https://esm.sh/drizzle-orm@0.30.9/neon-http"
+      }
+    }
+    </script>
+    <style>
+      body { 
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+        color: rgb(255, 255, 255);
+        background: linear-gradient(to bottom, transparent, rgb(0, 0, 0)) rgb(10, 10, 10);
+        min-height: 100vh;
+      }
+      .text-balance { text-wrap: balance; }
+      
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #0f172a; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-black text-slate-200">
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { clsx } from 'clsx';
+        import { 
+            Trash2, Plus, Database, ShieldCheck, Pencil, X, Save, 
+            Loader2, Calculator, AlertTriangle, Terminal, Plug, Home as HomeIcon 
+        } from 'lucide-react';
+        import { neon } from '@neondatabase/serverless';
+        import { drizzle } from 'drizzle-orm/neon-http';
+        import { pgTable, serial, text, real, integer } from 'drizzle-orm/pg-core';
+        import { eq, asc } from 'drizzle-orm';
+
+        // --- DB SCHEMA ---
+        const leagues = pgTable('leagues', {
+            id: serial('id').primaryKey(),
+            name: text('name').notNull(),
+            avg_home_goals: real('avg_home_goals').notNull(),
+            avg_away_goals: real('avg_away_goals').notNull(),
+        });
+
+        const teams = pgTable('teams', {
+            id: serial('id').primaryKey(),
+            league_id: integer('league_id').references(() => leagues.id).notNull(),
+            name: text('name').notNull(),
+            home_goals_for: integer('home_goals_for').notNull(),
+            home_goals_against: integer('home_goals_against').notNull(),
+            home_games_played: integer('home_games_played').notNull(),
+            away_goals_for: integer('away_goals_for').notNull(),
+            away_goals_against: integer('away_goals_against').notNull(),
+            away_games_played: integer('away_games_played').notNull(),
+        });
+
+        const schema = { leagues, teams };
+
+        // --- DB CONNECTION ---
+        const getEnv = (key) => {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                return window.localStorage.getItem(key);
+            }
+            return null;
+        };
+
+        // Initialize DB Client
+        let db;
+        const initDb = () => {
+            let connectionString = getEnv('DATABASE_URL');
+            if (connectionString) {
+                const match = connectionString.match(/postgres(?:ql)?:\/\/[^\s|"'<>]+/);
+                if (match) connectionString = match[0];
+            } else {
+                return null;
+            }
+            
+            try {
+                const sql = neon(connectionString);
+                db = drizzle(sql, { schema });
+                return db;
+            } catch (e) {
+                console.error("Failed to init DB:", e);
+                return null;
+            }
+        };
+
+        // Initial init
+        initDb();
+
+        // --- ACTIONS ---
+        
+        const factorial = (n) => {
+            if (n === 0 || n === 1) return 1;
+            let result = 1;
+            for (let i = 2; i <= n; i++) result *= i;
+            return result;
+        };
+
+        const poisson = (k, lambda) => {
+            return (Math.exp(-lambda) * Math.pow(lambda, k)) / factorial(k);
+        };
+
+        async function verifyPin(pin) {
+            const storedPin = localStorage.getItem('NEXT_PUBLIC_ADMIN_PIN');
+            const validPin = storedPin || '1234'; 
+            return pin === validPin;
+        }
+
+        async function getLeagues() {
+            if (!db) throw new Error("Database not connected");
+            return await db.select().from(leagues).orderBy(asc(leagues.name));
+        }
+
+        async function getTeams(leagueId) {
+            if (!db) throw new Error("Database not connected");
+            return await db.select().from(teams).where(eq(teams.league_id, leagueId)).orderBy(asc(teams.name));
+        }
+
+        async function createLeague(data) {
+            if (!db) throw new Error("Database not connected");
+            await db.insert(leagues).values({
+                name: data.name,
+                avg_home_goals: data.avgHome,
+                avg_away_goals: data.avgAway
+            });
+        }
+
+        async function updateLeague(data) {
+            if (!db) throw new Error("Database not connected");
+            await db.update(leagues).set({
+                name: data.name,
+                avg_home_goals: data.avgHome,
+                avg_away_goals: data.avgAway
+            }).where(eq(leagues.id, data.id));
+        }
+
+        async function createTeam(data) {
+            if (!db) throw new Error("Database not connected");
+            await db.insert(teams).values({
+                league_id: parseInt(data.league_id),
+                name: data.name,
+                home_goals_for: parseInt(data.home_goals_for),
+                home_goals_against: parseInt(data.home_goals_against),
+                home_games_played: parseInt(data.home_games_played),
+                away_goals_for: parseInt(data.away_goals_for),
+                away_goals_against: parseInt(data.away_goals_against),
+                away_games_played: parseInt(data.away_games_played)
+            });
+        }
+
+        async function updateTeam(data) {
+            if (!db) throw new Error("Database not connected");
+            await db.update(teams).set({
+                league_id: parseInt(data.league_id),
+                name: data.name,
+                home_goals_for: parseInt(data.home_goals_for),
+                home_goals_against: parseInt(data.home_goals_against),
+                home_games_played: parseInt(data.home_games_played),
+                away_goals_for: parseInt(data.away_goals_for),
+                away_goals_against: parseInt(data.away_goals_against),
+                away_games_played: parseInt(data.away_games_played)
+            }).where(eq(teams.id, data.id));
+        }
+
+        async function deleteTeam(teamId) {
+            if (!db) throw new Error("Database not connected");
+            await db.delete(teams).where(eq(teams.id, teamId));
+        }
+
+        async function calculatePrediction(leagueId, homeTeamId, awayTeamId) {
+            if (!db) throw new Error("Database not connected");
+            
+            // Using query builder from drizzle
+            const leagueData = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
+            const homeTeam = await db.query.teams.findFirst({ where: eq(teams.id, homeTeamId) });
+            const awayTeam = await db.query.teams.findFirst({ where: eq(teams.id, awayTeamId) });
+
+            if (!leagueData || !homeTeam || !awayTeam) {
+                throw new Error("Invalid selection");
+            }
+
+            const safeDiv = (num, den) => (den === 0 ? 0 : num / den);
+
+            // Step 1: Calculate Strengths
+            const homeAttackStr = safeDiv(safeDiv(homeTeam.home_goals_for, homeTeam.home_games_played), leagueData.avg_home_goals);
+            const awayAttackStr = safeDiv(safeDiv(awayTeam.away_goals_for, awayTeam.away_games_played), leagueData.avg_away_goals);
+            
+            const homeDefenseStr = safeDiv(safeDiv(homeTeam.home_goals_against, homeTeam.home_games_played), leagueData.avg_away_goals);
+            const awayDefenseStr = safeDiv(safeDiv(awayTeam.away_goals_against, awayTeam.away_games_played), leagueData.avg_home_goals);
+
+            // Step 2: Calculate Expected Goals (Lambda)
+            const homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
+            const awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
+
+            // Step 3: Generate Matrix (0-5 goals)
+            const matrixSize = 6;
+            const matrix = [];
+            let homeWinProb = 0;
+            let drawProb = 0;
+            let awayWinProb = 0;
+
+            for (let h = 0; h < matrixSize; h++) {
+                const row = [];
+                const probHome = poisson(h, homeExpGoals);
+
+                for (let a = 0; a < matrixSize; a++) {
+                    const probAway = poisson(a, awayExpGoals);
+                    const cellProb = probHome * probAway; // Joint probability
+                    
+                    row.push({ h, a, prob: cellProb });
+
+                    if (h > a) homeWinProb += cellProb;
+                    else if (h === a) drawProb += cellProb;
+                    else awayWinProb += cellProb;
+                }
+                matrix.push(row);
+            }
+
+            return {
+                homeExpGoals,
+                awayExpGoals,
+                homeWinProb,
+                drawProb,
+                awayWinProb,
+                matrix,
+            };
+        }
+
+
+        // --- COMPONENTS ---
+
+        function StatCard({ label, value, sub, color }) {
+            return React.createElement('div', { className: "bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center text-center" },
+                React.createElement('span', { className: "text-sm font-semibold text-slate-500 uppercase mb-1" }, label),
+                React.createElement('span', { className: clsx("text-4xl font-black mb-2", color) }, value),
+                React.createElement('span', { className: "text-xs text-slate-600 font-mono bg-slate-950 px-2 py-1 rounded" }, sub)
+            );
+        }
+
+        function HomePage() {
+            const [leaguesList, setLeaguesList] = useState([]);
+            const [teamsList, setTeamsList] = useState([]);
+            
+            const [selectedLeague, setSelectedLeague] = useState("");
+            const [selectedHome, setSelectedHome] = useState("");
+            const [selectedAway, setSelectedAway] = useState("");
+            
+            const [loading, setLoading] = useState(false);
+            const [prediction, setPrediction] = useState(null);
+            const [error, setError] = useState(null);
+            
+            const [showSqlHelp, setShowSqlHelp] = useState(false);
+            const [showConfigInput, setShowConfigInput] = useState(false);
+            const [tempUrl, setTempUrl] = useState("");
+
+            useEffect(() => {
+                if (typeof window !== 'undefined') {
+                    setTempUrl(localStorage.getItem('DATABASE_URL') || "");
+                }
+
+                setLoading(true);
+                getLeagues()
+                    .then(setLeaguesList)
+                    .catch(err => {
+                        const errMsg = err instanceof Error ? err.message : String(err);
+                        if (errMsg.includes("relation") && errMsg.includes("does not exist")) {
+                            setError("Database setup required");
+                            setShowSqlHelp(true);
+                        } else if (errMsg.includes("Database not connected")) {
+                            setError("Connect your database");
+                            setShowConfigInput(true);
+                        } else {
+                            // Often a network error or 404 on the API URL if env vars missing
+                            setError("Connect your database");
+                            setShowConfigInput(true);
+                        }
+                    })
+                    .finally(() => setLoading(false));
+            }, []);
+
+            useEffect(() => {
+                if (selectedLeague) {
+                    setLoading(true);
+                    getTeams(parseInt(selectedLeague))
+                        .then(setTeamsList)
+                        .catch(err => {
+                            console.error(err);
+                            setError("Failed to load teams.");
+                        })
+                        .finally(() => setLoading(false));
+                    
+                    setSelectedHome("");
+                    setSelectedAway("");
+                    setPrediction(null);
+                }
+            }, [selectedLeague]);
+
+            const handleCalculate = async () => {
+                if (!selectedLeague || !selectedHome || !selectedAway) return;
+                if (selectedHome === selectedAway) {
+                    alert("Home and Away teams cannot be the same.");
+                    return;
+                }
+
+                setLoading(true);
+                setError(null);
+                try {
+                    const result = await calculatePrediction(
+                        parseInt(selectedLeague),
+                        parseInt(selectedHome),
+                        parseInt(selectedAway)
+                    );
+                    setPrediction(result);
+                } catch (e) {
+                    console.error(e);
+                    setError("Failed to calculate prediction. Please try again.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleSaveConfig = () => {
+                if (!tempUrl) return;
+                let cleanUrl = tempUrl.trim();
+                const match = cleanUrl.match(/postgres(?:ql)?:\/\/[^\s|"'<>]+/);
+                if (match) cleanUrl = match[0];
+
+                localStorage.setItem('DATABASE_URL', cleanUrl);
+                window.location.reload();
+            };
+
+            const maxProb = prediction 
+                ? Math.max(...prediction.matrix.flat().map(c => c.prob)) 
+                : 0;
+
+            if (error) {
+                return React.createElement('div', { className: "flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4 max-w-3xl mx-auto" },
+                    React.createElement('div', { className: clsx("p-4 rounded-full", showConfigInput ? "bg-neon-500/10" : "bg-red-500/10") },
+                        showConfigInput 
+                            ? React.createElement(Database, { className: "w-12 h-12 text-neon-500" })
+                            : React.createElement(AlertTriangle, { className: "w-12 h-12 text-red-500" })
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('h2', { className: "text-2xl font-bold text-white" }, error),
+                        !showConfigInput && !showSqlHelp && React.createElement('p', { className: "text-red-300 max-w-md mx-auto" }, error)
+                    ),
+                    showConfigInput && React.createElement('div', { className: "w-full max-w-md bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-4" },
+                        React.createElement('div', { className: "text-left" },
+                            React.createElement('label', { className: "text-sm font-bold text-slate-400" }, "Neon Connection String"),
+                            React.createElement('p', { className: "text-xs text-slate-500 mb-2" }, "Paste your Postgres URL from the Neon Dashboard here."),
+                            React.createElement('input', {
+                                type: "password",
+                                placeholder: "postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/neondb",
+                                className: "w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-white focus:border-neon-500 outline-none",
+                                value: tempUrl,
+                                onChange: (e) => setTempUrl(e.target.value)
+                            })
+                        ),
+                        React.createElement('button', {
+                            onClick: handleSaveConfig,
+                            className: "w-full bg-neon-500 hover:bg-neon-400 text-black font-bold py-2 rounded flex items-center justify-center gap-2"
+                        },
+                            React.createElement(Save, { className: "w-4 h-4" }), "Save & Connect"
+                        )
+                    ),
+                    showSqlHelp && React.createElement('div', { className: "w-full bg-slate-900 border border-slate-800 rounded-lg text-left overflow-hidden" },
+                        React.createElement('div', { className: "bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center gap-2" },
+                            React.createElement(Terminal, { className: "w-4 h-4 text-slate-400" }),
+                            React.createElement('span', { className: "text-xs font-mono text-slate-400" }, "db/setup.sql")
+                        ),
+                        React.createElement('div', { className: "p-4 overflow-x-auto" },
+                            React.createElement('pre', { className: "text-xs font-mono text-neon-400 whitespace-pre" },
+`-- Run this in your Neon SQL Editor:
+
+CREATE TABLE IF NOT EXISTS leagues (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  avg_home_goals REAL NOT NULL,
+  avg_away_goals REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+  id SERIAL PRIMARY KEY,
+  league_id INTEGER NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  home_goals_for INTEGER NOT NULL,
+  home_goals_against INTEGER NOT NULL,
+  home_games_played INTEGER NOT NULL,
+  away_goals_for INTEGER NOT NULL,
+  away_goals_against INTEGER NOT NULL,
+  away_games_played INTEGER NOT NULL
+);
+
+-- Seed Data Example
+INSERT INTO leagues (name, avg_home_goals, avg_away_goals) 
+VALUES ('Premier League', 1.68, 1.35);`
+                            )
+                        )
+                    ),
+                    !showConfigInput && React.createElement('button', {
+                        onClick: () => window.location.reload(),
+                        className: "text-slate-500 hover:text-white text-sm underline mt-4"
+                    }, "Try Reloading")
+                );
+            }
+
+            return React.createElement('div', { className: "space-y-12 py-10" },
+                React.createElement('div', { className: "text-center space-y-4" },
+                    React.createElement('h1', { className: "text-4xl md:text-6xl font-black text-white tracking-tighter" },
+                        "MATCH ", React.createElement('span', { className: "text-neon-400" }, "PREDICTOR")
+                    ),
+                    React.createElement('p', { className: "text-slate-400 max-w-lg mx-auto" },
+                        "Select a league and two teams to generate a probability matrix using Poisson distribution analysis."
+                    )
+                ),
+                React.createElement('div', { className: "grid md:grid-cols-4 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl" },
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "League"),
+                        React.createElement('select', {
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500 transition-colors",
+                            value: selectedLeague,
+                            onChange: (e) => setSelectedLeague(e.target.value)
+                        },
+                            React.createElement('option', { value: "" }, "Select League..."),
+                            leaguesList.map(l => React.createElement('option', { key: l.id, value: l.id }, l.name))
+                        )
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Home Team"),
+                        React.createElement('select', {
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500 transition-colors disabled:opacity-50",
+                            value: selectedHome,
+                            onChange: (e) => setSelectedHome(e.target.value),
+                            disabled: !selectedLeague || loading
+                        },
+                            React.createElement('option', { value: "" }, "Select Team..."),
+                            teamsList.map(t => React.createElement('option', { key: t.id, value: t.id }, t.name))
+                        )
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Away Team"),
+                        React.createElement('select', {
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500 transition-colors disabled:opacity-50",
+                            value: selectedAway,
+                            onChange: (e) => setSelectedAway(e.target.value),
+                            disabled: !selectedLeague || loading
+                        },
+                            React.createElement('option', { value: "" }, "Select Team..."),
+                            teamsList.map(t => React.createElement('option', { key: t.id, value: t.id }, t.name))
+                        )
+                    ),
+                    React.createElement('div', { className: "flex items-end" },
+                        React.createElement('button', {
+                            onClick: handleCalculate,
+                            disabled: loading || !selectedHome || !selectedAway,
+                            className: "w-full bg-neon-500 hover:bg-neon-400 text-slate-950 font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        },
+                            loading ? React.createElement(Loader2, { className: "animate-spin w-5 h-5" }) : React.createElement(Calculator, { className: "w-5 h-5" }),
+                            "CALCULATE"
+                        )
+                    )
+                ),
+                prediction && React.createElement('div', { className: "animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-8" },
+                    React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-6" },
+                        React.createElement(StatCard, { label: "Home Win", value: (prediction.homeWinProb * 100).toFixed(1) + "%", sub: `xG: ${prediction.homeExpGoals.toFixed(2)}`, color: "text-neon-400" }),
+                        React.createElement(StatCard, { label: "Draw", value: (prediction.drawProb * 100).toFixed(1) + "%", sub: "Neutral Outcome", color: "text-slate-200" }),
+                        React.createElement(StatCard, { label: "Away Win", value: (prediction.awayWinProb * 100).toFixed(1) + "%", sub: `xG: ${prediction.awayExpGoals.toFixed(2)}`, color: "text-red-400" })
+                    ),
+                    React.createElement('div', { className: "overflow-x-auto" },
+                        React.createElement('div', { className: "min-w-[600px] bg-slate-900 border border-slate-800 rounded-xl p-6" },
+                            React.createElement('h3', { className: "text-lg font-bold text-white mb-4" }, "Scoreline Probability Matrix (%)"),
+                            React.createElement('div', { className: "grid grid-cols-[auto_repeat(6,1fr)] gap-1" },
+                                React.createElement('div', { className: "flex items-center justify-center font-bold text-slate-500 text-xs p-2" }, "H \\ A"),
+                                [0,1,2,3,4,5].map(g => 
+                                    React.createElement('div', { key: `head-${g}`, className: "flex items-center justify-center font-bold text-slate-400 bg-slate-950/50 p-2 rounded" }, g)
+                                ),
+                                prediction.matrix.map((row, hIdx) => 
+                                    React.createElement(React.Fragment, { key: `row-${hIdx}` },
+                                        React.createElement('div', { className: "flex items-center justify-center font-bold text-slate-400 bg-slate-950/50 p-2 rounded" }, hIdx),
+                                        row.map((cell, aIdx) => 
+                                            React.createElement('div', {
+                                                key: `${hIdx}-${aIdx}`,
+                                                className: clsx(
+                                                    "flex flex-col items-center justify-center p-3 rounded transition-all",
+                                                    cell.prob === maxProb 
+                                                        ? "bg-neon-500 text-slate-950 font-bold shadow-[0_0_15px_rgba(74,222,128,0.3)] scale-105 z-10" 
+                                                        : "bg-slate-950 hover:bg-slate-800 text-slate-300"
+                                                )
+                                            },
+                                                React.createElement('span', { className: "text-sm" }, (cell.prob * 100).toFixed(1) + "%")
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        function AdminPage() {
+            const [pin, setPin] = useState("");
+            const [authorized, setAuthorized] = useState(false);
+            const [activeTab, setActiveTab] = useState('leagues');
+            const [leaguesList, setLeaguesList] = useState([]);
+            const [teamsList, setTeamsList] = useState([]);
+            
+            const [editingLeagueId, setEditingLeagueId] = useState(null);
+            const [leagueForm, setLeagueForm] = useState({ name: '', avgHome: 1.5, avgAway: 1.2 });
+            
+            const [editingTeamId, setEditingTeamId] = useState(null);
+            const [teamForm, setTeamForm] = useState({
+                league_id: '',
+                name: '',
+                home_goals_for: 0, home_goals_against: 0, home_games_played: 0,
+                away_goals_for: 0, away_goals_against: 0, away_games_played: 0
+            });
+
+            const handleAuth = async () => {
+                const isValid = await verifyPin(pin);
+                if (isValid) {
+                    setAuthorized(true);
+                    refreshData();
+                } else {
+                    alert("Invalid PIN. Try '1234' for demo.");
+                }
+            };
+
+            const refreshData = async () => {
+                try {
+                    const l = await getLeagues();
+                    setLeaguesList(l);
+                    if (l.length > 0 && !teamForm.league_id) {
+                       setTeamForm(prev => ({ ...prev, league_id: l[0].id.toString() }));
+                    }
+                } catch (error) {
+                    console.error("Error loading admin data:", error);
+                    alert("Database Error: " + error.message);
+                }
+            };
+
+            useEffect(() => {
+                if (authorized && teamForm.league_id) {
+                    getTeams(parseInt(teamForm.league_id)).then(setTeamsList).catch(console.error);
+                }
+            }, [authorized, teamForm.league_id]);
+
+            const submitLeague = async () => {
+                if (editingLeagueId) {
+                    await updateLeague({ id: editingLeagueId, ...leagueForm });
+                    setEditingLeagueId(null);
+                } else {
+                    await createLeague(leagueForm);
+                }
+                setLeagueForm({ name: '', avgHome: 1.5, avgAway: 1.2 });
+                refreshData();
+            };
+
+            const submitTeam = async () => {
+                if (editingTeamId) {
+                    await updateTeam({ id: editingTeamId, ...teamForm });
+                    setEditingTeamId(null);
+                } else {
+                    await createTeam({ ...teamForm, league_id: parseInt(teamForm.league_id) });
+                }
+                setTeamForm(prev => ({
+                    ...prev,
+                    name: '',
+                    home_goals_for: 0, home_goals_against: 0, home_games_played: 0,
+                    away_goals_for: 0, away_goals_against: 0, away_games_played: 0
+                }));
+                getTeams(parseInt(teamForm.league_id)).then(setTeamsList);
+            };
+
+            const handleDeleteTeam = async (id) => {
+                if(confirm('Are you sure you want to delete this team?')) {
+                    await deleteTeam(id);
+                    getTeams(parseInt(teamForm.league_id)).then(setTeamsList);
+                }
+            };
+
+            if (!authorized) {
+                return React.createElement('div', { className: "flex flex-col items-center justify-center min-h-[60vh] gap-4" },
+                    React.createElement(ShieldCheck, { className: "w-16 h-16 text-slate-700" }),
+                    React.createElement('h2', { className: "text-2xl font-bold" }, "Admin Access"),
+                    React.createElement('div', { className: "flex gap-2" },
+                        React.createElement('input', {
+                            type: "password",
+                            placeholder: "Enter PIN (Demo: 1234)",
+                            className: "bg-slate-900 border border-slate-800 rounded px-4 py-2 text-white",
+                            value: pin,
+                            onChange: (e) => setPin(e.target.value)
+                        }),
+                        React.createElement('button', {
+                            onClick: handleAuth,
+                            className: "bg-neon-500 text-black font-bold px-4 py-2 rounded hover:bg-neon-400"
+                        }, "Access")
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: "space-y-8" },
+                React.createElement('div', { className: "flex items-center justify-between border-b border-slate-800 pb-4" },
+                    React.createElement('h1', { className: "text-3xl font-bold flex items-center gap-2" },
+                        React.createElement(Database, { className: "text-neon-500" }), "Database Management"
+                    ),
+                    React.createElement('div', { className: "flex bg-slate-900 p-1 rounded-lg" },
+                        React.createElement('button', {
+                            onClick: () => setActiveTab('leagues'),
+                            className: `px-4 py-2 rounded text-sm font-medium transition-colors ${activeTab === 'leagues' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-white'}`
+                        }, "Leagues"),
+                        React.createElement('button', {
+                            onClick: () => setActiveTab('teams'),
+                            className: `px-4 py-2 rounded text-sm font-medium transition-colors ${activeTab === 'teams' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-white'}`
+                        }, "Teams")
+                    )
+                ),
+                activeTab === 'leagues' && React.createElement('div', { className: "grid md:grid-cols-2 gap-8" },
+                    React.createElement('div', { className: "bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4 h-fit" },
+                        React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, editingLeagueId ? 'Edit League' : 'Add League'),
+                        React.createElement('input', {
+                            placeholder: "League Name",
+                            className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white",
+                            value: leagueForm.name,
+                            onChange: (e) => setLeagueForm({...leagueForm, name: e.target.value})
+                        }),
+                        React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                            React.createElement('input', { type: "number", step: "0.01", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgHome, onChange: (e) => setLeagueForm({...leagueForm, avgHome: parseFloat(e.target.value)}) }),
+                            React.createElement('input', { type: "number", step: "0.01", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgAway, onChange: (e) => setLeagueForm({...leagueForm, avgAway: parseFloat(e.target.value)}) })
+                        ),
+                        React.createElement('button', { onClick: submitLeague, className: "w-full bg-neon-500 text-black font-bold py-3 rounded hover:bg-neon-400" }, editingLeagueId ? 'Update' : 'Create')
+                    ),
+                    React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" },
+                        React.createElement('table', { className: "w-full text-left" },
+                            React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" },
+                                React.createElement('tr', null,
+                                    React.createElement('th', { className: "p-4" }, "Name"),
+                                    React.createElement('th', { className: "p-4 text-right" }, "Avg Home"),
+                                    React.createElement('th', { className: "p-4 text-right" }, "Avg Away"),
+                                    React.createElement('th', { className: "p-4 text-right" }, "Edit")
+                                )
+                            ),
+                            React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                                leaguesList.map(l => 
+                                    React.createElement('tr', { key: l.id, className: "text-sm" },
+                                        React.createElement('td', { className: "p-4 font-medium" }, l.name),
+                                        React.createElement('td', { className: "p-4 text-right font-mono" }, l.avg_home_goals),
+                                        React.createElement('td', { className: "p-4 text-right font-mono" }, l.avg_away_goals),
+                                        React.createElement('td', { className: "p-4 text-right" },
+                                            React.createElement('button', { 
+                                                onClick: () => { setLeagueForm({name: l.name, avgHome: l.avg_home_goals, avgAway: l.avg_away_goals}); setEditingLeagueId(l.id); },
+                                                className: "text-neon-500 hover:text-neon-400"
+                                            }, React.createElement(Pencil, { className: "w-4 h-4" }))
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+                activeTab === 'teams' && React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+                    React.createElement('div', { className: "lg:col-span-1 bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4 h-fit" },
+                        React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, editingTeamId ? 'Edit Team' : 'Add Team'),
+                        React.createElement('select', {
+                            className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white",
+                            value: teamForm.league_id,
+                            onChange: (e) => setTeamForm({...teamForm, league_id: e.target.value})
+                        },
+                            leaguesList.map(l => React.createElement('option', { key: l.id, value: l.id }, l.name))
+                        ),
+                        React.createElement('input', { placeholder: "Team Name", className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: teamForm.name, onChange: (e) => setTeamForm({...teamForm, name: e.target.value}) }),
+                        React.createElement('div', { className: "grid grid-cols-3 gap-2" },
+                            React.createElement('input', { type: "number", placeholder: "Home G", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.home_goals_for, onChange: (e) => setTeamForm({...teamForm, home_goals_for: parseInt(e.target.value)||0}) }),
+                            React.createElement('input', { type: "number", placeholder: "Home GA", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.home_goals_against, onChange: (e) => setTeamForm({...teamForm, home_goals_against: parseInt(e.target.value)||0}) }),
+                            React.createElement('input', { type: "number", placeholder: "Home GP", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.home_games_played, onChange: (e) => setTeamForm({...teamForm, home_games_played: parseInt(e.target.value)||0}) })
+                        ),
+                        React.createElement('div', { className: "grid grid-cols-3 gap-2" },
+                            React.createElement('input', { type: "number", placeholder: "Away G", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.away_goals_for, onChange: (e) => setTeamForm({...teamForm, away_goals_for: parseInt(e.target.value)||0}) }),
+                            React.createElement('input', { type: "number", placeholder: "Away GA", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.away_goals_against, onChange: (e) => setTeamForm({...teamForm, away_goals_against: parseInt(e.target.value)||0}) }),
+                            React.createElement('input', { type: "number", placeholder: "Away GP", className: "bg-slate-950 border border-slate-700 p-2 rounded text-sm", value: teamForm.away_games_played, onChange: (e) => setTeamForm({...teamForm, away_games_played: parseInt(e.target.value)||0}) })
+                        ),
+                        React.createElement('button', { onClick: submitTeam, className: "w-full bg-neon-500 text-black font-bold py-3 rounded hover:bg-neon-400" }, editingTeamId ? 'Update' : 'Add Team')
+                    ),
+                    React.createElement('div', { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" },
+                        React.createElement('div', { className: "max-h-[600px] overflow-y-auto" },
+                            React.createElement('table', { className: "w-full text-left" },
+                                React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase sticky top-0" },
+                                    React.createElement('tr', null,
+                                        React.createElement('th', { className: "p-4" }, "Team"),
+                                        React.createElement('th', { className: "p-4 text-center" }, "Home Stats"),
+                                        React.createElement('th', { className: "p-4 text-center" }, "Away Stats"),
+                                        React.createElement('th', { className: "p-4 text-right" }, "Actions")
+                                    )
+                                ),
+                                React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                                    teamsList.map(t => 
+                                        React.createElement('tr', { key: t.id, className: "text-sm hover:bg-slate-800/50" },
+                                            React.createElement('td', { className: "p-4 font-bold text-white" }, t.name),
+                                            React.createElement('td', { className: "p-4 text-center text-slate-400 font-mono" }, `${t.home_goals_for}/${t.home_goals_against}/${t.home_games_played}`),
+                                            React.createElement('td', { className: "p-4 text-center text-slate-400 font-mono" }, `${t.away_goals_for}/${t.away_goals_against}/${t.away_games_played}`),
+                                            React.createElement('td', { className: "p-4 text-right" },
+                                                React.createElement('button', { onClick: () => {
+                                                    setTeamForm({
+                                                        league_id: t.league_id.toString(), name: t.name,
+                                                        home_goals_for: t.home_goals_for, home_goals_against: t.home_goals_against, home_games_played: t.home_games_played,
+                                                        away_goals_for: t.away_goals_for, away_goals_against: t.away_goals_against, away_games_played: t.away_games_played
+                                                    });
+                                                    setEditingTeamId(t.id);
+                                                }, className: "text-neon-500 p-2" }, React.createElement(Pencil, { className: "w-4 h-4" })),
+                                                React.createElement('button', { onClick: () => handleDeleteTeam(t.id), className: "text-red-500 p-2" }, React.createElement(Trash2, { className: "w-4 h-4" }))
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // --- ROOT COMPONENT ---
+
+        function App() {
+            const [path, setPath] = useState(window.location.pathname);
+
+            useEffect(() => {
+                const onPopState = () => setPath(window.location.pathname);
+                window.addEventListener('popstate', onPopState);
+                return () => window.removeEventListener('popstate', onPopState);
+            }, []);
+
+            const navigate = (newPath) => {
+                window.history.pushState({}, '', newPath);
+                setPath(newPath);
+            };
+
+            const PageComponent = path === '/admin' ? AdminPage : HomePage;
+
+            return React.createElement(React.Fragment, null,
+                React.createElement('nav', { className: "border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50" },
+                    React.createElement('div', { className: "max-w-6xl mx-auto px-6 h-16 flex items-center justify-between" },
+                        React.createElement('a', { 
+                            href: "/", 
+                            onClick: (e) => { e.preventDefault(); navigate('/'); },
+                            className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" 
+                        },
+                            React.createElement('div', { className: "w-3 h-3 bg-neon-400 rounded-full shadow-[0_0_10px_#4ade80]" }),
+                            "NEON", React.createElement('span', { className: "text-slate-500" }, "PREDICT")
+                        ),
+                        React.createElement('div', { className: "flex gap-6 text-sm font-medium" },
+                            React.createElement('a', { 
+                                href: "/", 
+                                onClick: (e) => { e.preventDefault(); navigate('/'); },
+                                className: clsx("transition-colors", path === '/' ? "text-neon-400" : "hover:text-neon-400") 
+                            }, "Calculator"),
+                            React.createElement('a', { 
+                                href: "/admin", 
+                                onClick: (e) => { e.preventDefault(); navigate('/admin'); },
+                                className: clsx("transition-colors", path === '/admin' ? "text-neon-400" : "hover:text-neon-400") 
+                            }, "Admin")
+                        )
+                    )
+                ),
+                React.createElement('main', { className: "max-w-6xl mx-auto p-6" },
+                    React.createElement(PageComponent)
+                )
+            );
+        }
+
+        const rootEl = document.getElementById('root');
+        if (rootEl) {
+            createRoot(rootEl).render(React.createElement(App));
+        }
+    </script>
+</body>
+</html>
