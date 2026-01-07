@@ -1,6 +1,8 @@
 import React from "react";
+
 // Replaced Next.js Link and Font with standard HTML/CSS for local browser testing
 // The index.tsx router intercepts these <a> tags.
+
 export default function RootLayout({
   children,
 }: Readonly<{
