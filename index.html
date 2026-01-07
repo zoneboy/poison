@@ -95,6 +95,11 @@
         const schema = { leagues, teams };
 
         // --- DB CONNECTION ---
+        
+        // This placeholder is replaced by the build script with your Netlify Environment Variable.
+        // You can also hardcode it here (e.g. "postgresql://user:pass@...") to skip the input screen.
+        const PUBLIC_DB_URL = "__DATABASE_URL__";
+
         const getEnv = (key) => {
             if (typeof window !== 'undefined' && window.localStorage) {
                 return window.localStorage.getItem(key);
@@ -106,6 +111,12 @@
         let db;
         const initDb = () => {
             let connectionString = getEnv('DATABASE_URL');
+            
+            // Fallback: If not in localStorage, try the injected/hardcoded public URL
+            if (!connectionString && PUBLIC_DB_URL && PUBLIC_DB_URL !== "__" + "DATABASE_URL" + "__") {
+                connectionString = PUBLIC_DB_URL;
+            }
+
             if (connectionString) {
                 const match = connectionString.match(/postgres(?:ql)?:\/\/[^\s|"'<>]+/);
                 if (match) connectionString = match[0];
