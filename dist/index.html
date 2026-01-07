@@ -333,15 +333,44 @@
                     React.createElement('div', { className: "lg:col-span-1 bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4" },
                         React.createElement('select', { className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: teamForm.league_id, onChange: (e) => setTeamForm({...teamForm, league_id: e.target.value}) }, leaguesList.map(l => React.createElement('option', { key: l.id, value: l.id }, l.name))),
                         React.createElement('input', { placeholder: "Team Name", className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: teamForm.name, onChange: (e) => setTeamForm({...teamForm, name: e.target.value}) }),
-                        React.createElement('button', { onClick: submitTeam, className: "w-full bg-neon-500 text-black font-bold py-3 rounded" }, editingTeamId ? 'Update' : 'Add Team')
+                        
+                        React.createElement('div', { className: "pt-2 border-t border-slate-800" },
+                            React.createElement('label', { className: "text-xs font-bold text-neon-500 uppercase mb-2 block" }, "Home Stats"),
+                            React.createElement('div', { className: "grid grid-cols-3 gap-2" },
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GF"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.home_goals_for, onChange: (e) => setTeamForm({...teamForm, home_goals_for: parseInt(e.target.value) || 0}) })),
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GA"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.home_goals_against, onChange: (e) => setTeamForm({...teamForm, home_goals_against: parseInt(e.target.value) || 0}) })),
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GP"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.home_games_played, onChange: (e) => setTeamForm({...teamForm, home_games_played: parseInt(e.target.value) || 0}) }))
+                            )
+                        ),
+                        React.createElement('div', { className: "pt-2 border-t border-slate-800" },
+                            React.createElement('label', { className: "text-xs font-bold text-red-400 uppercase mb-2 block" }, "Away Stats"),
+                            React.createElement('div', { className: "grid grid-cols-3 gap-2" },
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GF"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.away_goals_for, onChange: (e) => setTeamForm({...teamForm, away_goals_for: parseInt(e.target.value) || 0}) })),
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GA"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.away_goals_against, onChange: (e) => setTeamForm({...teamForm, away_goals_against: parseInt(e.target.value) || 0}) })),
+                                React.createElement('div', { className: "space-y-1" }, React.createElement('span', { className: "text-[10px] text-slate-500" }, "GP"), React.createElement('input', { type: "number", className: "w-full bg-slate-950 border border-slate-700 p-2 rounded text-sm text-white", value: teamForm.away_games_played, onChange: (e) => setTeamForm({...teamForm, away_games_played: parseInt(e.target.value) || 0}) }))
+                            )
+                        ),
+
+                        React.createElement('button', { onClick: submitTeam, className: "w-full bg-neon-500 text-black font-bold py-3 rounded mt-4" }, editingTeamId ? 'Update' : 'Add Team')
                     ),
                     React.createElement('div', { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" },
                         React.createElement('table', { className: "w-full text-left" },
-                            React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" }, React.createElement('tr', null, React.createElement('th', { className: "p-4" }, "Team"), React.createElement('th', { className: "p-4 text-right" }, "Actions"))),
+                            React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" }, React.createElement('tr', null, 
+                                React.createElement('th', { className: "p-4" }, "Team"), 
+                                React.createElement('th', { className: "p-4 text-center" }, "Home (GF/GA/GP)"),
+                                React.createElement('th', { className: "p-4 text-center" }, "Away (GF/GA/GP)"),
+                                React.createElement('th', { className: "p-4 text-right" }, "Actions")
+                            )),
                             React.createElement('tbody', { className: "divide-y divide-slate-800" }, teamsList.map(t => 
-                                React.createElement('tr', { key: t.id }, React.createElement('td', { className: "p-4" }, t.name), React.createElement('td', { className: "p-4 text-right" }, 
-                                    React.createElement('button', { onClick: () => handleDeleteTeam(t.id), className: "text-red-500" }, React.createElement(Trash2, { className: "w-4 h-4" }))
-                                ))
+                                React.createElement('tr', { key: t.id }, 
+                                    React.createElement('td', { className: "p-4" }, t.name), 
+                                    React.createElement('td', { className: "p-4 text-center text-slate-400 font-mono" }, `${t.home_goals_for}/${t.home_goals_against}/${t.home_games_played}`),
+                                    React.createElement('td', { className: "p-4 text-center text-slate-400 font-mono" }, `${t.away_goals_for}/${t.away_goals_against}/${t.away_games_played}`),
+                                    React.createElement('td', { className: "p-4 text-right" }, 
+                                        React.createElement('button', { onClick: () => { setTeamForm({...t, league_id: t.league_id.toString()}); setEditingTeamId(t.id); }, className: "text-neon-500 mr-2" }, React.createElement(Pencil, { className: "w-4 h-4" })),
+                                        React.createElement('button', { onClick: () => handleDeleteTeam(t.id), className: "text-red-500" }, React.createElement(Trash2, { className: "w-4 h-4" }))
+                                    )
+                                )
                             ))
                         )
                     )
