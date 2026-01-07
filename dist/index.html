@@ -51,7 +51,7 @@
         import { 
             Trash2, Plus, Database, ShieldCheck, Pencil, X, Save, 
             Loader2, Calculator, AlertTriangle, Terminal, Home as HomeIcon,
-            TrendingUp, TrendingDown, Minus, Target
+            TrendingUp, TrendingDown, Minus, Target, Users
         } from 'lucide-react';
 
         // --- API CLIENT ---
@@ -93,6 +93,80 @@
                 React.createElement('span', { className: "text-sm font-semibold text-slate-500 uppercase mb-1" }, label),
                 React.createElement('span', { className: clsx("text-4xl font-black mb-2", color) }, value),
                 React.createElement('span', { className: "text-xs text-slate-600 font-mono bg-slate-950 px-2 py-1 rounded" }, sub)
+            );
+        }
+
+        function BTTSCard({ btts }) {
+            const getRecommendationColor = (rec) => {
+                if (rec.includes('YES')) return 'text-neon-400';
+                if (rec.includes('NO') && rec !== 'NO BET') return 'text-red-400';
+                return 'text-slate-400';
+            };
+
+            const getValueBadgeColor = (rating) => {
+                if (rating.includes('STRONG')) return 'bg-neon-500/20 text-neon-400 border-neon-500/50';
+                if (rating.includes('GOOD')) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+                if (rating.includes('SLIGHT')) return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+                return 'bg-slate-700/50 text-slate-400 border-slate-600';
+            };
+
+            return React.createElement('div', { className: "bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-xl p-6 space-y-6" },
+                React.createElement('div', { className: "flex items-center justify-between" },
+                    React.createElement('div', { className: "flex items-center gap-3" },
+                        React.createElement('div', { className: "bg-slate-800 p-3 rounded-lg" },
+                            React.createElement(Users, { className: "w-6 h-6 text-neon-400" })
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('h3', { className: "text-lg font-bold text-white" }, "Both Teams To Score (BTTS)"),
+                            React.createElement('p', { className: "text-xs text-slate-500" }, "Goal/Goal vs No Goal analysis")
+                        )
+                    ),
+                    React.createElement('div', { className: clsx("px-4 py-2 rounded-lg border font-bold text-sm", getValueBadgeColor(btts.valueRating)) },
+                        btts.valueRating
+                    )
+                ),
+
+                React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-4 gap-4" },
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "BTTS Yes"),
+                        React.createElement('div', { className: "text-2xl font-bold text-neon-400" }, btts.probBTTS_Yes, "%")
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "BTTS No"),
+                        React.createElement('div', { className: "text-2xl font-bold text-red-400" }, btts.probBTTS_No, "%")
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Home 0 Goals"),
+                        React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, btts.probHomeZero, "%")
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Away 0 Goals"),
+                        React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, btts.probAwayZero, "%")
+                    )
+                ),
+
+                React.createElement('div', { className: "bg-slate-950 border border-slate-800 rounded-lg p-6" },
+                    React.createElement('div', { className: "flex items-center justify-between mb-4" },
+                        React.createElement('span', { className: "text-sm font-semibold text-slate-400 uppercase" }, "Recommendation"),
+                        React.createElement('div', { className: clsx("px-4 py-2 rounded-lg font-bold text-xl", getRecommendationColor(btts.recommendation)) },
+                            btts.recommendation
+                        )
+                    ),
+                    React.createElement('div', { className: "grid grid-cols-3 gap-4 mt-4" },
+                        React.createElement('div', { className: "bg-slate-900 p-4 rounded-lg" },
+                            React.createElement('div', { className: "text-xs text-slate-500 mb-2" }, "Fair BTTS Yes Odds"),
+                            React.createElement('div', { className: "text-xl font-bold text-white" }, btts.fairOddsBTTS_Yes)
+                        ),
+                        React.createElement('div', { className: "bg-slate-900 p-4 rounded-lg" },
+                            React.createElement('div', { className: "text-xs text-slate-500 mb-2" }, "Bookie BTTS Odds"),
+                            React.createElement('div', { className: "text-xl font-bold text-yellow-400" }, btts.bookieOdds)
+                        ),
+                        React.createElement('div', { className: "bg-slate-900 p-4 rounded-lg" },
+                            React.createElement('div', { className: "text-xs text-slate-500 mb-2" }, "Confidence"),
+                            React.createElement('div', { className: "text-xl font-bold text-white" }, btts.confidence)
+                        )
+                    )
+                )
             );
         }
 
@@ -190,6 +264,7 @@
             const [selectedHome, setSelectedHome] = useState("");
             const [selectedAway, setSelectedAway] = useState("");
             const [goalLine, setGoalLine] = useState(2.5);
+            const [bttsOdds, setBttsOdds] = useState(1.80);
             const [loading, setLoading] = useState(false);
             const [prediction, setPrediction] = useState(null);
             const [error, setError] = useState(null);
@@ -230,7 +305,8 @@
                         leagueId: parseInt(selectedLeague),
                         homeTeamId: parseInt(selectedHome),
                         awayTeamId: parseInt(selectedAway),
-                        goalLine: parseFloat(goalLine)
+                        goalLine: parseFloat(goalLine),
+                        bttsOdds: parseFloat(bttsOdds)
                     });
                     setPrediction(result);
                 } catch (e) {
@@ -259,7 +335,7 @@
                     React.createElement('h1', { className: "text-4xl md:text-6xl font-black text-white tracking-tighter" }, "MATCH ", React.createElement('span', { className: "text-neon-400" }, "PREDICTOR")),
                     React.createElement('p', { className: "text-slate-400 max-w-lg mx-auto" }, "Advanced football prediction using Dixon-Coles model and True Goal Line analysis.")
                 ),
-                React.createElement('div', { className: "grid md:grid-cols-5 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl" },
+                React.createElement('div', { className: "grid md:grid-cols-6 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl" },
                     React.createElement('div', { className: "space-y-2" },
                         React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "League"),
                         React.createElement('select', { className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", value: selectedLeague, onChange: (e) => setSelectedLeague(e.target.value) },
@@ -285,6 +361,10 @@
                         React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Goal Line"),
                         React.createElement('input', { type: "number", step: "0.5", className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", value: goalLine, onChange: (e) => setGoalLine(e.target.value) })
                     ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "BTTS Odds"),
+                        React.createElement('input', { type: "number", step: "0.1", className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", value: bttsOdds, onChange: (e) => setBttsOdds(e.target.value) })
+                    ),
                     React.createElement('div', { className: "flex items-end" },
                         React.createElement('button', { onClick: handleCalculate, disabled: loading || !selectedHome || !selectedAway, className: "w-full bg-neon-500 hover:bg-neon-400 text-slate-950 font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" },
                             loading ? React.createElement(Loader2, { className: "animate-spin w-5 h-5" }) : React.createElement(Calculator, { className: "w-5 h-5" }), "CALCULATE"
@@ -299,6 +379,8 @@
                     ),
                     
                     prediction.trueGoalLine && React.createElement(TGLCard, { tgl: prediction.trueGoalLine }),
+
+                    prediction.btts && React.createElement(BTTSCard, { btts: prediction.btts }),
 
                     React.createElement('div', { className: "overflow-x-auto" },
                         React.createElement('div', { className: "min-w-[600px] bg-slate-900 border border-slate-800 rounded-xl p-6" },

@@ -53,7 +53,7 @@ const dixonColesAdjustment = (homeGoals, awayGoals, lambdaHome, lambdaAway, rho 
 
 // --- TRUE GOAL LINE (TGL) ANALYZER ---
 const analyzeTGL = (totalExpectedGoals, bookieLine = 2.5) => {
-    const margin = 0.20; // 0.20 goals margin for "value" threshold
+    const margin = 0.20;
     
     let recommendation = "";
     let valueRating = "";
@@ -108,14 +108,11 @@ const calculateGoalLineProbabilities = (homeExpGoals, awayExpGoals, line = 2.5) 
     let overProb = 0;
     let underProb = 0;
     
-    // Calculate probabilities for total goals (sum of home + away)
-    // Using convolution of two Poisson distributions
     const maxGoals = 15;
     
     for (let total = 0; total <= maxGoals; total++) {
         let probTotal = 0;
         
-        // Sum all combinations that give this total
         for (let h = 0; h <= total; h++) {
             const a = total - h;
             probTotal += poisson(h, homeExpGoals) * poisson(a, awayExpGoals);
@@ -133,6 +130,83 @@ const calculateGoalLineProbabilities = (homeExpGoals, awayExpGoals, line = 2.5) 
         underProbability: parseFloat((underProb * 100).toFixed(2)),
         impliedOverOdds: overProb > 0 ? parseFloat((1 / overProb).toFixed(2)) : null,
         impliedUnderOdds: underProb > 0 ? parseFloat((1 / underProb).toFixed(2)) : null
+    };
+};
+
+// --- BTTS (BOTH TEAMS TO SCORE) ANALYZER ---
+const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
+    // Probability that home team scores 0 goals
+    const probHomeZero = Math.exp(-homeExpGoals);
+    
+    // Probability that away team scores 0 goals
+    const probAwayZero = Math.exp(-awayExpGoals);
+    
+    // Probability that both teams score 0 (0-0)
+    const probZeroZero = probHomeZero * probAwayZero;
+    
+    // Probability that at least one team doesn't score
+    // = P(Home=0) + P(Away=0) - P(Both=0)
+    const probAtLeastOneZero = probHomeZero + probAwayZero - probZeroZero;
+    
+    // Probability that BOTH teams score (BTTS YES / GG)
+    const probBTTS_Yes = 1 - probAtLeastOneZero;
+    const probBTTS_No = probAtLeastOneZero;
+    
+    // Fair odds calculation
+    const fairOddsBTTS_Yes = probBTTS_Yes > 0 ? 1 / probBTTS_Yes : null;
+    const fairOddsBTTS_No = probBTTS_No > 0 ? 1 / probBTTS_No : null;
+    
+    // Value analysis
+    let recommendation = "NO VALUE";
+    let valueRating = "";
+    let confidence = "";
+    
+    // If bookie odds are higher than fair odds, there's value
+    if (bookieBTTSOdds && fairOddsBTTS_Yes) {
+        const valueDiff = bookieBTTSOdds - fairOddsBTTS_Yes;
+        
+        if (valueDiff > 0.30) {
+            recommendation = "BET BTTS YES";
+            valueRating = "STRONG VALUE";
+            confidence = "High";
+        } else if (valueDiff > 0.15) {
+            recommendation = "BET BTTS YES";
+            valueRating = "GOOD VALUE";
+            confidence = "Medium";
+        } else if (valueDiff > 0.05) {
+            recommendation = "BET BTTS YES";
+            valueRating = "SLIGHT VALUE";
+            confidence = "Low";
+        } else if (valueDiff < -0.30) {
+            recommendation = "BET BTTS NO";
+            valueRating = "STRONG VALUE";
+            confidence = "High";
+        } else if (valueDiff < -0.15) {
+            recommendation = "BET BTTS NO";
+            valueRating = "GOOD VALUE";
+            confidence = "Medium";
+        } else if (valueDiff < -0.05) {
+            recommendation = "BET BTTS NO";
+            valueRating = "SLIGHT VALUE";
+            confidence = "Low";
+        } else {
+            recommendation = "NO BET";
+            valueRating = "NO CLEAR VALUE";
+            confidence = "N/A";
+        }
+    }
+    
+    return {
+        probHomeZero: parseFloat((probHomeZero * 100).toFixed(2)),
+        probAwayZero: parseFloat((probAwayZero * 100).toFixed(2)),
+        probBTTS_Yes: parseFloat((probBTTS_Yes * 100).toFixed(2)),
+        probBTTS_No: parseFloat((probBTTS_No * 100).toFixed(2)),
+        fairOddsBTTS_Yes: fairOddsBTTS_Yes ? parseFloat(fairOddsBTTS_Yes.toFixed(2)) : null,
+        fairOddsBTTS_No: fairOddsBTTS_No ? parseFloat(fairOddsBTTS_No.toFixed(2)) : null,
+        bookieOdds: bookieBTTSOdds,
+        recommendation,
+        valueRating,
+        confidence
     };
 };
 
@@ -270,6 +344,7 @@ exports.handler = async (event, context) => {
                 // Get optional parameters
                 const rho = payload.rho !== undefined ? payload.rho : -0.13;
                 const goalLine = payload.goalLine !== undefined ? payload.goalLine : 2.5;
+                const bttsOdds = payload.bttsOdds !== undefined ? payload.bttsOdds : 1.80;
 
                 // Calculate probability matrices
                 const matrixSize = 6;
@@ -314,6 +389,9 @@ exports.handler = async (event, context) => {
                 const tglAnalysis = analyzeTGL(totalExpectedGoals, goalLine);
                 const goalLineProbabilities = calculateGoalLineProbabilities(homeExpGoals, awayExpGoals, goalLine);
 
+                // BTTS ANALYSIS
+                const bttsAnalysis = analyzeBTTS(homeExpGoals, awayExpGoals, bttsOdds);
+
                 result = {
                     homeExpGoals: parseFloat(homeExpGoals.toFixed(2)),
                     awayExpGoals: parseFloat(awayExpGoals.toFixed(2)),
@@ -335,6 +413,7 @@ exports.handler = async (event, context) => {
                         ...tglAnalysis,
                         ...goalLineProbabilities
                     },
+                    btts: bttsAnalysis,
                     // Backwards compatibility
                     homeWinProb: dcHomeWin,
                     drawProb: dcDraw,
