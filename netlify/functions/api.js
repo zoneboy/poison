@@ -37,6 +37,24 @@ const poisson = (k, lambda) => {
     return (Math.exp(-lambda) * Math.pow(lambda, k)) / factorial(k);
 };
 
+// --- DIXON-COLES CORRELATION FACTOR ---
+// The rho parameter adjusts probabilities for low-scoring games
+// Typical values range from -0.15 to 0.15
+// Negative values increase correlation (more realistic for football)
+const dixonColesAdjustment = (homeGoals, awayGoals, lambdaHome, lambdaAway, rho = -0.13) => {
+    // Only apply adjustment to low-scoring outcomes
+    if (homeGoals > 1 || awayGoals > 1) return 1;
+    
+    const adjustments = {
+        '0,0': 1 - lambdaHome * lambdaAway * rho,
+        '0,1': 1 + lambdaHome * rho,
+        '1,0': 1 + lambdaAway * rho,
+        '1,1': 1 - rho
+    };
+    
+    return adjustments[`${homeGoals},${awayGoals}`] || 1;
+};
+
 // --- RESPONSE HELPER ---
 const response = (statusCode, body) => ({
     statusCode,
@@ -85,7 +103,6 @@ exports.handler = async (event, context) => {
 
         switch (action) {
             case 'health':
-                // Simple DB check
                 await db.select().from(leagues).limit(1);
                 result = { status: "ok", message: "Database connected" };
                 break;
@@ -153,7 +170,6 @@ exports.handler = async (event, context) => {
                 break;
 
             case 'predict':
-                // Robust Fetching without Relational API magic
                 const [leagueData] = await db.select().from(leagues).where(eq(leagues.id, payload.leagueId)).limit(1);
                 const [homeTeam] = await db.select().from(teams).where(eq(teams.id, payload.homeTeamId)).limit(1);
                 const [awayTeam] = await db.select().from(teams).where(eq(teams.id, payload.awayTeamId)).limit(1);
@@ -162,38 +178,83 @@ exports.handler = async (event, context) => {
 
                 const safeDiv = (num, den) => (den === 0 ? 0 : num / den);
 
-                // Strengths
+                // Calculate attack and defense strengths
                 const homeAttackStr = safeDiv(safeDiv(homeTeam.home_goals_for, homeTeam.home_games_played), leagueData.avg_home_goals);
                 const awayAttackStr = safeDiv(safeDiv(awayTeam.away_goals_for, awayTeam.away_games_played), leagueData.avg_away_goals);
                 const homeDefenseStr = safeDiv(safeDiv(homeTeam.home_goals_against, homeTeam.home_games_played), leagueData.avg_away_goals);
                 const awayDefenseStr = safeDiv(safeDiv(awayTeam.away_goals_against, awayTeam.away_games_played), leagueData.avg_home_goals);
 
-                // Expected Goals
+                // Expected goals (lambda parameters)
                 const homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
                 const awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
 
-                // Matrix
+                // Get rho parameter from payload or use default
+                const rho = payload.rho !== undefined ? payload.rho : -0.13;
+
+                // Calculate probability matrices - both basic Poisson and Dixon-Coles
                 const matrixSize = 6;
-                const matrix = [];
-                let homeWinProb = 0;
-                let drawProb = 0;
-                let awayWinProb = 0;
+                const poissonMatrix = [];
+                const dixonColesMatrix = [];
+                
+                let poissonHomeWin = 0, poissonDraw = 0, poissonAwayWin = 0;
+                let dcHomeWin = 0, dcDraw = 0, dcAwayWin = 0;
 
                 for (let h = 0; h < matrixSize; h++) {
-                    const row = [];
+                    const poissonRow = [];
+                    const dcRow = [];
                     const probHome = poisson(h, homeExpGoals);
+                    
                     for (let a = 0; a < matrixSize; a++) {
                         const probAway = poisson(a, awayExpGoals);
-                        const cellProb = probHome * probAway;
-                        row.push({ h, a, prob: cellProb });
-                        if (h > a) homeWinProb += cellProb;
-                        else if (h === a) drawProb += cellProb;
-                        else awayWinProb += cellProb;
+                        
+                        // Basic Poisson probability
+                        const poissonProb = probHome * probAway;
+                        poissonRow.push({ h, a, prob: poissonProb });
+                        
+                        // Dixon-Coles adjusted probability
+                        const adjustment = dixonColesAdjustment(h, a, homeExpGoals, awayExpGoals, rho);
+                        const dcProb = poissonProb * adjustment;
+                        dcRow.push({ h, a, prob: dcProb, adjustment });
+                        
+                        // Accumulate outcome probabilities
+                        if (h > a) {
+                            poissonHomeWin += poissonProb;
+                            dcHomeWin += dcProb;
+                        } else if (h === a) {
+                            poissonDraw += poissonProb;
+                            dcDraw += dcProb;
+                        } else {
+                            poissonAwayWin += poissonProb;
+                            dcAwayWin += dcProb;
+                        }
                     }
-                    matrix.push(row);
+                    
+                    poissonMatrix.push(poissonRow);
+                    dixonColesMatrix.push(dcRow);
                 }
 
-                result = { homeExpGoals, awayExpGoals, homeWinProb, drawProb, awayWinProb, matrix };
+                result = {
+                    homeExpGoals,
+                    awayExpGoals,
+                    rho,
+                    poisson: {
+                        homeWinProb: poissonHomeWin,
+                        drawProb: poissonDraw,
+                        awayWinProb: poissonAwayWin,
+                        matrix: poissonMatrix
+                    },
+                    dixonColes: {
+                        homeWinProb: dcHomeWin,
+                        drawProb: dcDraw,
+                        awayWinProb: dcAwayWin,
+                        matrix: dixonColesMatrix
+                    },
+                    // For backwards compatibility, use Dixon-Coles as default
+                    homeWinProb: dcHomeWin,
+                    drawProb: dcDraw,
+                    awayWinProb: dcAwayWin,
+                    matrix: dixonColesMatrix
+                };
                 break;
 
             default:
