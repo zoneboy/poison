@@ -120,6 +120,9 @@
             if (connectionString) {
                 const match = connectionString.match(/postgres(?:ql)?:\/\/[^\s|"'<>]+/);
                 if (match) connectionString = match[0];
+                
+                // Debug log to help user verify which DB is active (masked)
+                console.log("Initializing DB with:", connectionString.replace(/:[^:@]*@/, ':***@'));
             } else {
                 return null;
             }
@@ -313,16 +316,23 @@
                     .then(setLeaguesList)
                     .catch(err => {
                         const errMsg = err instanceof Error ? err.message : String(err);
+                        console.error("DB Error:", errMsg);
+                        
                         if (errMsg.includes("relation") && errMsg.includes("does not exist")) {
-                            setError("Database setup required");
+                            setError("Database setup required (Tables missing)");
                             setShowSqlHelp(true);
-                        } else if (errMsg.includes("Database not connected")) {
+                        } else if (errMsg.includes("Database not connected") || errMsg.includes("failed to fetch")) {
                             setError("Connect your database");
                             setShowConfigInput(true);
                         } else {
-                            // Often a network error or 404 on the API URL if env vars missing
-                            setError("Connect your database");
-                            setShowConfigInput(true);
+                            setError(errMsg); // Show actual error for debugging
+                            // If it's a permission/auth error, show config
+                            if (errMsg.includes("password") || errMsg.includes("connection")) {
+                                setShowConfigInput(true);
+                            } else {
+                                // For other errors (like tables missing but different msg), allow option to see sql help
+                                setShowSqlHelp(true); 
+                            }
                         }
                     })
                     .finally(() => setLoading(false));
@@ -447,10 +457,16 @@ VALUES ('Premier League', 1.68, 1.35);`
                             )
                         )
                     ),
-                    !showConfigInput && React.createElement('button', {
-                        onClick: () => window.location.reload(),
-                        className: "text-slate-500 hover:text-white text-sm underline mt-4"
-                    }, "Try Reloading")
+                    !showConfigInput && React.createElement('div', { className: "flex flex-col gap-3 mt-4" },
+                        React.createElement('button', {
+                            onClick: () => window.location.reload(),
+                            className: "text-slate-500 hover:text-white text-sm underline"
+                        }, "Try Reloading"),
+                        React.createElement('button', {
+                            onClick: () => { setShowConfigInput(true); setShowSqlHelp(false); },
+                            className: "text-neon-500 hover:text-neon-400 text-sm font-semibold"
+                        }, "Check Connection Settings")
+                    )
                 );
             }
 
