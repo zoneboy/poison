@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Netlify Function App",
   "scripts": {
-    "build": "echo 'Build complete'"
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",

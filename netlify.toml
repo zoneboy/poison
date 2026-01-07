@@ -1,8 +1,8 @@
 [build]
-  command = "npm install"
+  command = "echo 'Building Static Site...'"
   publish = "dist"
   functions = "netlify/functions"
 
 [functions]
-  node_bundler = "esbuild"
-
+  # Default bundling usually works best
+  # node_bundler = "esbuild"

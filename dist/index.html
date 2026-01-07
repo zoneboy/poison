@@ -56,7 +56,8 @@
         // --- API CLIENT ---
         const api = async (action, payload = {}) => {
             try {
-                const res = await fetch('/api', { 
+                // Direct path to Netlify Function to avoid redirect issues
+                const res = await fetch('/.netlify/functions/api', { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action, payload })
