@@ -55,13 +55,27 @@
 
         // --- API CLIENT ---
         const api = async (action, payload = {}) => {
-            const res = await fetch('/.netlify/functions/api', {
-                method: 'POST',
-                body: JSON.stringify({ action, payload })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Server Error');
-            return data;
+            try {
+                const res = await fetch('/api', { // Use simpler path proxied by Netlify
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, payload })
+                });
+                
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    const text = await res.text();
+                    console.error("Non-JSON Response:", text);
+                    throw new Error("Server returned non-JSON response (likely an HTML error page). Check Netlify Function logs.");
+                }
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Server Error');
+                return data;
+            } catch (e) {
+                console.error("API Call Failed:", e);
+                throw e;
+            }
         };
 
         // --- COMPONENTS ---
