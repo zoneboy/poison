@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Football Predictor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Polyfill process.env for browser environments
+      if (typeof process === 'undefined') {
+        window.process = { env: {} };
+      }
+      
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              neon: {
+                400: '#4ade80',
+                500: '#22c55e',
+                900: '#14532d',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@0.368.0",
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "clsx": "https://esm.sh/clsx@2.1.0",
+    "tailwind-merge": "https://esm.sh/tailwind-merge@2.2.0",
+    "tailwindcss": "https://esm.sh/tailwindcss@3.4.1",
+    "@neondatabase/serverless": "https://esm.sh/@neondatabase/serverless@0.9.0",
+    "drizzle-orm": "https://esm.sh/drizzle-orm@0.30.9",
+    "drizzle-orm/": "https://esm.sh/drizzle-orm@0.30.9/",
+    "dotenv": "https://esm.sh/dotenv@16.4.5",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "drizzle-kit": "https://esm.sh/drizzle-kit@^0.31.8"
+  }
+}
+</script>
+    <style>
+      /* shim for next/font/google */
+      body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-black text-slate-200">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
