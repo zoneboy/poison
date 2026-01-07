@@ -156,43 +156,49 @@ const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
     const fairOddsBTTS_Yes = probBTTS_Yes > 0 ? 1 / probBTTS_Yes : null;
     const fairOddsBTTS_No = probBTTS_No > 0 ? 1 / probBTTS_No : null;
     
-    // Value analysis
-    let recommendation = "NO VALUE";
-    let valueRating = "";
-    let confidence = "";
+    // Value analysis - the input is BTTS YES odds from bookmaker
+    let recommendation = "NO BET";
+    let valueRating = "NO CLEAR VALUE";
+    let confidence = "N/A";
+    let expectedValue = 0;
     
-    // If bookie odds are higher than fair odds, there's value
     if (bookieBTTSOdds && fairOddsBTTS_Yes) {
-        const valueDiff = bookieBTTSOdds - fairOddsBTTS_Yes;
+        // VALUE ON BTTS YES: When bookie odds are HIGHER than fair odds
+        // Example: Fair = 1.93, Bookie = 2.10 → Value on YES
+        const valueDiffYes = bookieBTTSOdds - fairOddsBTTS_Yes;
         
-        if (valueDiff > 0.30) {
+        // VALUE ON BTTS NO: Calculate implied "No" odds
+        // If bookie offers 1.68 for Yes, and we think fair is 1.93,
+        // it means the market undervalues "Yes" → potential value on "No"
+        // But we need to know the actual BTTS No odds from bookie to determine this
+        // Since we only have YES odds, we'll check if YES odds are significantly lower than fair
+        
+        if (valueDiffYes > 0.30) {
             recommendation = "BET BTTS YES";
             valueRating = "STRONG VALUE";
             confidence = "High";
-        } else if (valueDiff > 0.15) {
+            expectedValue = valueDiffYes;
+        } else if (valueDiffYes > 0.15) {
             recommendation = "BET BTTS YES";
             valueRating = "GOOD VALUE";
             confidence = "Medium";
-        } else if (valueDiff > 0.05) {
+            expectedValue = valueDiffYes;
+        } else if (valueDiffYes > 0.05) {
             recommendation = "BET BTTS YES";
             valueRating = "SLIGHT VALUE";
             confidence = "Low";
-        } else if (valueDiff < -0.30) {
-            recommendation = "BET BTTS NO";
-            valueRating = "STRONG VALUE";
-            confidence = "High";
-        } else if (valueDiff < -0.15) {
-            recommendation = "BET BTTS NO";
-            valueRating = "GOOD VALUE";
+            expectedValue = valueDiffYes;
+        } else if (valueDiffYes < -0.20) {
+            // Bookie odds much lower than fair = overpriced YES = potential value on NO
+            recommendation = "CONSIDER BTTS NO";
+            valueRating = "BOOKIE UNDERPRICING YES";
             confidence = "Medium";
-        } else if (valueDiff < -0.05) {
-            recommendation = "BET BTTS NO";
-            valueRating = "SLIGHT VALUE";
-            confidence = "Low";
+            expectedValue = valueDiffYes;
         } else {
             recommendation = "NO BET";
             valueRating = "NO CLEAR VALUE";
             confidence = "N/A";
+            expectedValue = valueDiffYes;
         }
     }
     
@@ -203,7 +209,8 @@ const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
         probBTTS_No: parseFloat((probBTTS_No * 100).toFixed(2)),
         fairOddsBTTS_Yes: fairOddsBTTS_Yes ? parseFloat(fairOddsBTTS_Yes.toFixed(2)) : null,
         fairOddsBTTS_No: fairOddsBTTS_No ? parseFloat(fairOddsBTTS_No.toFixed(2)) : null,
-        bookieOdds: bookieBTTSOdds,
+        bookieOddsYes: bookieBTTSOdds,
+        expectedValue: parseFloat(expectedValue.toFixed(2)),
         recommendation,
         valueRating,
         confidence
