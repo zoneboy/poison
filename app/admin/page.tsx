@@ -1,9 +1,7 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { verifyPin, createLeague, updateLeague, createTeam, updateTeam, getLeagues, getTeams, deleteTeam, type League, type Team } from '../actions';
 import { Trash2, Plus, Database, ShieldCheck, Pencil, X, Save } from 'lucide-react';
-
 export default function AdminPage() {
   const [pin, setPin] = useState("");
   const [authorized, setAuthorized] = useState(false);
@@ -24,7 +22,6 @@ export default function AdminPage() {
     home_goals_for: 0, home_goals_against: 0, home_games_played: 0,
     away_goals_for: 0, away_goals_against: 0, away_games_played: 0
   });
-
   // Auth Handler
   const handleAuth = async () => {
     const isValid = await verifyPin(pin);
@@ -35,7 +32,6 @@ export default function AdminPage() {
       alert("Invalid PIN. Try '1234' for demo.");
     }
   };
-
   const refreshData = async () => {
     try {
         const l = await getLeagues();
@@ -51,15 +47,12 @@ export default function AdminPage() {
         }
     }
   };
-
   // Effect to fetch teams when league dropdown changes in team form
   useEffect(() => {
     if (authorized && teamForm.league_id) {
       getTeams(parseInt(teamForm.league_id)).then(setTeams).catch(console.error);
     }
   }, [authorized, teamForm.league_id]);
-
-
   // Submit Handlers
   const submitLeague = async () => {
     if (editingLeagueId) {
@@ -71,7 +64,6 @@ export default function AdminPage() {
     setLeagueForm({ name: '', avgHome: 1.5, avgAway: 1.2 });
     refreshData();
   };
-
   const startEditLeague = (l: League) => {
     setLeagueForm({
       name: l.name,
@@ -80,12 +72,10 @@ export default function AdminPage() {
     });
     setEditingLeagueId(l.id);
   };
-
   const cancelEdit = () => {
     setLeagueForm({ name: '', avgHome: 1.5, avgAway: 1.2 });
     setEditingLeagueId(null);
   };
-
   // Team Logic
   const startEditTeam = (t: Team) => {
     setTeamForm({
@@ -100,7 +90,6 @@ export default function AdminPage() {
     });
     setEditingTeamId(t.id);
   };
-
   const cancelEditTeam = () => {
     // Reset form but keep current league if possible
     setTeamForm(prev => ({
@@ -111,7 +100,6 @@ export default function AdminPage() {
     }));
     setEditingTeamId(null);
   };
-
   const submitTeam = async () => {
     if (editingTeamId) {
         await updateTeam({
@@ -125,7 +113,6 @@ export default function AdminPage() {
             league_id: parseInt(teamForm.league_id)
         });
     }
-
     // Reset but keep league selected
     setTeamForm(prev => ({
         ...prev,
@@ -135,7 +122,6 @@ export default function AdminPage() {
     }));
     getTeams(parseInt(teamForm.league_id)).then(setTeams);
   };
-
   const handleDeleteTeam = async (id: number) => {
     if(confirm('Are you sure you want to delete this team?')) {
         await deleteTeam(id);
@@ -146,7 +132,6 @@ export default function AdminPage() {
         }
     }
   };
-
   if (!authorized) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -170,7 +155,6 @@ export default function AdminPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -193,7 +177,6 @@ export default function AdminPage() {
             </button>
         </div>
       </div>
-
       {/* LEAGUE MANAGEMENT */}
       {activeTab === 'leagues' && (
         <div className="grid md:grid-cols-2 gap-8">
@@ -247,7 +230,6 @@ export default function AdminPage() {
                     </div>
                 </div>
             </div>
-
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                 <table className="w-full text-left">
                     <thead className="bg-slate-950 text-slate-500 text-xs uppercase">
@@ -281,7 +263,6 @@ export default function AdminPage() {
             </div>
         </div>
       )}
-
       {/* TEAM MANAGEMENT */}
       {activeTab === 'teams' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -306,14 +287,12 @@ export default function AdminPage() {
                     >
                         {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
-
                     <input 
                         placeholder="Team Name"
                         className="w-full bg-slate-950 border border-slate-700 p-3 rounded text-white"
                         value={teamForm.name}
                         onChange={(e) => setTeamForm({...teamForm, name: e.target.value})}
                     />
-
                     <div className="pt-2 border-t border-slate-800">
                         <label className="text-xs font-bold text-neon-500 uppercase mb-2 block">Home Stats</label>
                         <div className="grid grid-cols-3 gap-2">
@@ -334,7 +313,6 @@ export default function AdminPage() {
                              </div>
                         </div>
                     </div>
-
                     <div className="pt-2 border-t border-slate-800">
                         <label className="text-xs font-bold text-red-400 uppercase mb-2 block">Away Stats</label>
                         <div className="grid grid-cols-3 gap-2">
@@ -355,7 +333,6 @@ export default function AdminPage() {
                              </div>
                         </div>
                     </div>
-
                     <button 
                         onClick={submitTeam}
                         className={editingTeamId 
@@ -378,7 +355,6 @@ export default function AdminPage() {
                     )}
                 </div>
              </div>
-
              {/* Team List */}
              <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
                 <div className="max-h-[600px] overflow-y-auto">

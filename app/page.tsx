@@ -1,10 +1,8 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { getLeagues, getTeams, calculatePrediction, type League, type Team, type PredictionResult } from './actions';
-import clsx from 'clsx';
+import { clsx } from 'clsx';
 import { Loader2, Calculator, AlertTriangle, Database, Terminal, Save, Plug } from 'lucide-react';
-
 export default function Home() {
   const [leagues, setLeagues] = useState<League[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -21,14 +19,12 @@ export default function Home() {
   const [showSqlHelp, setShowSqlHelp] = useState(false);
   const [showConfigInput, setShowConfigInput] = useState(false);
   const [tempUrl, setTempUrl] = useState("");
-
   // Load Leagues on Mount
   useEffect(() => {
     // Pre-fill temp url from localstorage if available
     if (typeof window !== 'undefined') {
         setTempUrl(localStorage.getItem('DATABASE_URL') || "");
     }
-
     setLoading(true);
     getLeagues()
       .then(setLeagues)
@@ -56,7 +52,6 @@ export default function Home() {
       })
       .finally(() => setLoading(false));
   }, []);
-
   // Load Teams when League changes
   useEffect(() => {
     if (selectedLeague) {
@@ -74,14 +69,12 @@ export default function Home() {
       setPrediction(null);
     }
   }, [selectedLeague]);
-
   const handleCalculate = async () => {
     if (!selectedLeague || !selectedHome || !selectedAway) return;
     if (selectedHome === selectedAway) {
       alert("Home and Away teams cannot be the same.");
       return;
     }
-
     setLoading(true);
     setError(null);
     try {
@@ -98,7 +91,6 @@ export default function Home() {
       setLoading(false);
     }
   };
-
   const handleSaveConfig = () => {
     if (!tempUrl) return;
     
@@ -108,16 +100,13 @@ export default function Home() {
     if (match) {
         cleanUrl = match[0];
     }
-
     localStorage.setItem('DATABASE_URL', cleanUrl);
     window.location.reload();
   };
-
   // Helper to find highest probability in matrix for highlighting
   const maxProb = prediction 
     ? Math.max(...prediction.matrix.flat().map(c => c.prob)) 
     : 0;
-
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4 max-w-3xl mx-auto">
@@ -129,7 +118,6 @@ export default function Home() {
             {/* Only show error detail if it's not a simple setup prompt */}
             {!showConfigInput && !showSqlHelp && <p className="text-red-300 max-w-md mx-auto">{error}</p>}
         </div>
-
         {showConfigInput && (
             <div className="w-full max-w-md bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-4">
                 <div className="text-left">
@@ -151,7 +139,6 @@ export default function Home() {
                 </button>
             </div>
         )}
-
         {showSqlHelp && (
             <div className="w-full bg-slate-900 border border-slate-800 rounded-lg text-left overflow-hidden">
                 <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center gap-2">
@@ -161,14 +148,12 @@ export default function Home() {
                 <div className="p-4 overflow-x-auto">
                     <pre className="text-xs font-mono text-neon-400 whitespace-pre">
 {`-- Run this in your Neon SQL Editor to fix missing tables:
-
 CREATE TABLE IF NOT EXISTS leagues (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   avg_home_goals REAL NOT NULL,
   avg_away_goals REAL NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS teams (
   id SERIAL PRIMARY KEY,
   league_id INTEGER NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
@@ -180,7 +165,6 @@ CREATE TABLE IF NOT EXISTS teams (
   away_goals_against INTEGER NOT NULL,
   away_games_played INTEGER NOT NULL
 );
-
 -- Seed Data
 INSERT INTO leagues (name, avg_home_goals, avg_away_goals) 
 VALUES ('Premier League', 1.68, 1.35);`}
@@ -204,7 +188,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
       </div>
     );
   }
-
   return (
     <div className="space-y-12 py-10">
       
@@ -217,7 +200,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
           Select a league and two teams to generate a probability matrix using Poisson distribution analysis.
         </p>
       </div>
-
       {/* Controls */}
       <div className="grid md:grid-cols-4 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl">
         <div className="space-y-2">
@@ -231,7 +213,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
             {leagues.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
-
         <div className="space-y-2">
           <label className="text-xs font-semibold text-slate-500 uppercase">Home Team</label>
           <select 
@@ -244,7 +225,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
             {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
-
         <div className="space-y-2">
           <label className="text-xs font-semibold text-slate-500 uppercase">Away Team</label>
           <select 
@@ -257,7 +237,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
             {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
-
         <div className="flex items-end">
           <button 
             onClick={handleCalculate}
@@ -269,7 +248,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
           </button>
         </div>
       </div>
-
       {/* Results */}
       {prediction && (
         <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-8">
@@ -295,7 +273,6 @@ VALUES ('Premier League', 1.68, 1.35);`}
               color="text-red-400"
             />
           </div>
-
           {/* Matrix */}
           <div className="overflow-x-auto">
             <div className="min-w-[600px] bg-slate-900 border border-slate-800 rounded-xl p-6">
@@ -311,11 +288,10 @@ VALUES ('Premier League', 1.68, 1.35);`}
                     {g}
                   </div>
                 ))}
-
                 {/* Data Rows */}
                 {prediction.matrix.map((row, hIdx) => (
-                  <>
-                    <div key={`row-head-${hIdx}`} className="flex items-center justify-center font-bold text-slate-400 bg-slate-950/50 p-2 rounded">
+                  <React.Fragment key={`row-${hIdx}`}>
+                    <div className="flex items-center justify-center font-bold text-slate-400 bg-slate-950/50 p-2 rounded">
                       {hIdx}
                     </div>
                     {row.map((cell, aIdx) => (
@@ -331,18 +307,16 @@ VALUES ('Premier League', 1.68, 1.35);`}
                         <span className="text-sm">{(cell.prob * 100).toFixed(1)}%</span>
                       </div>
                     ))}
-                  </>
+                  </React.Fragment>
                 ))}
               </div>
             </div>
           </div>
-
         </div>
       )}
     </div>
   );
 }
-
 function StatCard({ label, value, sub, color }: { label: string, value: string, sub: string, color: string }) {
   return (
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center text-center">

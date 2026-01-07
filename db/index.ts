@@ -1,7 +1,4 @@
 import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from './schema';
-
 // Helper to get env var safely in browser/server environments
 const getEnv = (key: string) => {
   // 1. Check process.env (Node.js/Next.js environment)
@@ -14,9 +11,7 @@ const getEnv = (key: string) => {
   }
   return null;
 };
-
 let connectionString = getEnv('DATABASE_URL');
-
 // Robust URL extraction:
 if (connectionString) {
   const match = connectionString.match(/postgres(?:ql)?:\/\/[^\s|"'<>]+/);
@@ -24,17 +19,12 @@ if (connectionString) {
     connectionString = match[0];
   }
 }
-
 if (!connectionString) {
   console.warn("DATABASE_URL is missing.");
 }
-
 const validFallback = 'postgresql://placeholder:placeholder@placeholder.neondatabase.app/neondb';
-
 const finalUrl = (connectionString && connectionString.startsWith('postgres')) 
   ? connectionString 
   : validFallback;
-
-// Export raw SQL client and Drizzle instance
+// Export raw SQL client
 export const sql = neon(finalUrl);
-export const db = drizzle(sql, { schema });
