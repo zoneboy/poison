@@ -1,4 +1,6 @@
 import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
+import * as schema from './schema';
 
 // Helper to get env var safely in browser/server environments
 const getEnv = (key: string) => {
@@ -33,5 +35,6 @@ const finalUrl = (connectionString && connectionString.startsWith('postgres'))
   ? connectionString 
   : validFallback;
 
-// Export raw SQL client
+// Export raw SQL client and Drizzle instance
 export const sql = neon(finalUrl);
+export const db = drizzle(sql, { schema });

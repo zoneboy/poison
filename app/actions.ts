@@ -1,7 +1,8 @@
 'use server';
 
-import { sql } from '../db/index';
-import { League, Team } from '../db/schema';
+import { db } from '../db/index';
+import { leagues, teams, League, Team } from '../db/schema';
+import { eq, asc } from 'drizzle-orm';
 
 // Re-export types for consumers
 export type { League, Team };
@@ -31,7 +32,7 @@ const poisson = (k: number, lambda: number): number => {
 // --- API / CRUD ---
 
 export async function verifyPin(pin: string) {
-  // Check both process.env and localstorage for the pin to facilitate testing in browser
+  // Check both process.env and localstorage for the pin
   const envPin = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_ADMIN_PIN : null;
   const storedPin = typeof window !== 'undefined' ? localStorage.getItem('NEXT_PUBLIC_ADMIN_PIN') : null;
   const validPin = envPin || storedPin || '1234'; // Fallback for demo
@@ -39,76 +40,65 @@ export async function verifyPin(pin: string) {
 }
 
 export async function getLeagues(): Promise<League[]> {
-  const rows = await sql`SELECT * FROM leagues ORDER BY name ASC`;
-  return rows as League[];
+  return await db.select().from(leagues).orderBy(asc(leagues.name));
 }
 
 export async function getTeams(leagueId: number): Promise<Team[]> {
-  const rows = await sql`SELECT * FROM teams WHERE league_id = ${leagueId} ORDER BY name ASC`;
-  return rows as Team[];
+  return await db.select().from(teams).where(eq(teams.league_id, leagueId)).orderBy(asc(teams.name));
 }
 
 export async function createLeague(data: { name: string; avgHome: number; avgAway: number }) {
-  await sql`
-    INSERT INTO leagues (name, avg_home_goals, avg_away_goals) 
-    VALUES (${data.name}, ${data.avgHome}, ${data.avgAway})
-  `;
+  await db.insert(leagues).values({
+    name: data.name,
+    avg_home_goals: data.avgHome,
+    avg_away_goals: data.avgAway
+  });
 }
 
 export async function updateLeague(data: { id: number; name: string; avgHome: number; avgAway: number }) {
-  await sql`
-    UPDATE leagues 
-    SET name = ${data.name}, avg_home_goals = ${data.avgHome}, avg_away_goals = ${data.avgAway}
-    WHERE id = ${data.id}
-  `;
+  await db.update(leagues).set({
+    name: data.name,
+    avg_home_goals: data.avgHome,
+    avg_away_goals: data.avgAway
+  }).where(eq(leagues.id, data.id));
 }
 
 export async function createTeam(data: any) {
-  await sql`
-    INSERT INTO teams (
-      league_id, name, 
-      home_goals_for, home_goals_against, home_games_played,
-      away_goals_for, away_goals_against, away_games_played
-    ) VALUES (
-      ${parseInt(data.league_id)}, ${data.name},
-      ${parseInt(data.home_goals_for)}, ${parseInt(data.home_goals_against)}, ${parseInt(data.home_games_played)},
-      ${parseInt(data.away_goals_for)}, ${parseInt(data.away_goals_against)}, ${parseInt(data.away_games_played)}
-    )
-  `;
+  await db.insert(teams).values({
+    league_id: parseInt(data.league_id),
+    name: data.name,
+    home_goals_for: parseInt(data.home_goals_for),
+    home_goals_against: parseInt(data.home_goals_against),
+    home_games_played: parseInt(data.home_games_played),
+    away_goals_for: parseInt(data.away_goals_for),
+    away_goals_against: parseInt(data.away_goals_against),
+    away_games_played: parseInt(data.away_games_played)
+  });
 }
 
 export async function updateTeam(data: any) {
-  await sql`
-    UPDATE teams SET
-      league_id = ${parseInt(data.league_id)},
-      name = ${data.name},
-      home_goals_for = ${parseInt(data.home_goals_for)},
-      home_goals_against = ${parseInt(data.home_goals_against)},
-      home_games_played = ${parseInt(data.home_games_played)},
-      away_goals_for = ${parseInt(data.away_goals_for)},
-      away_goals_against = ${parseInt(data.away_goals_against)},
-      away_games_played = ${parseInt(data.away_games_played)}
-    WHERE id = ${data.id}
-  `;
+  await db.update(teams).set({
+    league_id: parseInt(data.league_id),
+    name: data.name,
+    home_goals_for: parseInt(data.home_goals_for),
+    home_goals_against: parseInt(data.home_goals_against),
+    home_games_played: parseInt(data.home_games_played),
+    away_goals_for: parseInt(data.away_goals_for),
+    away_goals_against: parseInt(data.away_goals_against),
+    away_games_played: parseInt(data.away_games_played)
+  }).where(eq(teams.id, data.id));
 }
 
 export async function deleteTeam(teamId: number) {
-  await sql`DELETE FROM teams WHERE id = ${teamId}`;
+  await db.delete(teams).where(eq(teams.id, teamId));
 }
 
 // --- The Core Math Logic ---
 
 export async function calculatePrediction(leagueId: number, homeTeamId: number, awayTeamId: number): Promise<PredictionResult> {
-  // Fetch data directly from DB in parallel using raw SQL
-  const leaguePromise = sql`SELECT * FROM leagues WHERE id = ${leagueId}`;
-  const homePromise = sql`SELECT * FROM teams WHERE id = ${homeTeamId}`;
-  const awayPromise = sql`SELECT * FROM teams WHERE id = ${awayTeamId}`;
-
-  const [leagueResult, homeResult, awayResult] = await Promise.all([leaguePromise, homePromise, awayPromise]);
-
-  const leagueData = leagueResult[0] as League;
-  const homeTeam = homeResult[0] as Team;
-  const awayTeam = awayResult[0] as Team;
+  const leagueData = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
+  const homeTeam = await db.query.teams.findFirst({ where: eq(teams.id, homeTeamId) });
+  const awayTeam = await db.query.teams.findFirst({ where: eq(teams.id, awayTeamId) });
 
   if (!leagueData || !homeTeam || !awayTeam) {
     throw new Error("Invalid selection");
