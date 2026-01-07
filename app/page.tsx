@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getLeagues, getTeams, calculatePrediction, type League, type Team, type PredictionResult } from './actions';
 import { clsx } from 'clsx';
-import { Loader2, Calculator, AlertTriangle } from 'lucide-react';
+import { Loader2, Calculator, AlertTriangle, Database, Terminal } from 'lucide-react';
 
 export default function Home() {
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -16,6 +16,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showSqlHelp, setShowSqlHelp] = useState(false);
 
   // Load Leagues on Mount
   useEffect(() => {
@@ -23,7 +24,16 @@ export default function Home() {
       .then(setLeagues)
       .catch(err => {
         console.error("Failed to load leagues:", err);
-        setError("Could not connect to the database. Please check your DATABASE_URL environment variable.");
+        const errMsg = err.message || "";
+        
+        if (errMsg.includes("relation") && errMsg.includes("does not exist")) {
+            setError("Database tables are missing.");
+            setShowSqlHelp(true);
+        } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError")) {
+            setError("Connection failed. Check your DATABASE_URL.");
+        } else {
+            setError(errMsg || "Unknown database error");
+        }
       });
   }, []);
 
@@ -76,15 +86,56 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 text-center px-4">
-        <AlertTriangle className="w-16 h-16 text-red-500" />
-        <h2 className="text-2xl font-bold text-white">Connection Error</h2>
-        <p className="text-slate-400 max-w-md">{error}</p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4">
+        <div className="bg-red-500/10 p-4 rounded-full">
+            <AlertTriangle className="w-12 h-12 text-red-500" />
+        </div>
+        <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-white">Database Error</h2>
+            <p className="text-red-300 max-w-md mx-auto">{error}</p>
+        </div>
+
+        {showSqlHelp && (
+            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-lg text-left overflow-hidden">
+                <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs font-mono text-slate-400">db/setup.sql</span>
+                </div>
+                <div className="p-4 overflow-x-auto">
+                    <pre className="text-xs font-mono text-neon-400 whitespace-pre">
+{`-- Run this in your Neon SQL Editor to fix the error:
+
+CREATE TABLE IF NOT EXISTS leagues (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  avg_home_goals REAL NOT NULL,
+  avg_away_goals REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+  id SERIAL PRIMARY KEY,
+  league_id INTEGER NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  home_goals_for INTEGER NOT NULL,
+  home_goals_against INTEGER NOT NULL,
+  home_games_played INTEGER NOT NULL,
+  away_goals_for INTEGER NOT NULL,
+  away_goals_against INTEGER NOT NULL,
+  away_games_played INTEGER NOT NULL
+);`}
+                    </pre>
+                </div>
+                <div className="bg-slate-950 px-4 py-2 text-center">
+                    <p className="text-xs text-slate-500">Copy the code above and run it in your Neon Dashboard SQL Editor.</p>
+                </div>
+            </div>
+        )}
+
         <button 
           onClick={() => window.location.reload()}
-          className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded"
+          className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
         >
-          Retry
+          Retry Connection
         </button>
       </div>
     );
