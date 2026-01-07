@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getLeagues, getTeams, calculatePrediction, type League, type Team, type PredictionResult } from './actions';
 import { clsx } from 'clsx';
-import { Loader2, Calculator, AlertTriangle, Database, Terminal } from 'lucide-react';
+import { Loader2, Calculator, AlertTriangle, Database, Terminal, Save } from 'lucide-react';
 
 export default function Home() {
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -16,10 +16,19 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Error handling states
   const [showSqlHelp, setShowSqlHelp] = useState(false);
+  const [showConfigInput, setShowConfigInput] = useState(false);
+  const [tempUrl, setTempUrl] = useState("");
 
   // Load Leagues on Mount
   useEffect(() => {
+    // Pre-fill temp url from localstorage if available
+    if (typeof window !== 'undefined') {
+        setTempUrl(localStorage.getItem('DATABASE_URL') || "");
+    }
+
     getLeagues()
       .then(setLeagues)
       .catch(err => {
@@ -29,10 +38,13 @@ export default function Home() {
         if (errMsg.includes("relation") && errMsg.includes("does not exist")) {
             setError("Database tables are missing.");
             setShowSqlHelp(true);
-        } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError")) {
-            setError("Connection failed. Check your DATABASE_URL.");
+        } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("Invalid URL")) {
+            setError("Connection failed. Please check your Database URL.");
+            setShowConfigInput(true);
         } else {
             setError(errMsg || "Unknown database error");
+            // If we have no leagues and an unknown error, it's likely a config issue
+            setShowConfigInput(true);
         }
       });
   }, []);
@@ -79,6 +91,12 @@ export default function Home() {
     }
   };
 
+  const handleSaveConfig = () => {
+    if (!tempUrl) return;
+    localStorage.setItem('DATABASE_URL', tempUrl);
+    window.location.reload();
+  };
+
   // Helper to find highest probability in matrix for highlighting
   const maxProb = prediction 
     ? Math.max(...prediction.matrix.flat().map(c => c.prob)) 
@@ -86,7 +104,7 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4 max-w-3xl mx-auto">
         <div className="bg-red-500/10 p-4 rounded-full">
             <AlertTriangle className="w-12 h-12 text-red-500" />
         </div>
@@ -95,15 +113,37 @@ export default function Home() {
             <p className="text-red-300 max-w-md mx-auto">{error}</p>
         </div>
 
+        {showConfigInput && (
+            <div className="w-full max-w-md bg-slate-900 p-6 rounded-xl border border-slate-800 space-y-4">
+                <div className="text-left">
+                    <label className="text-sm font-bold text-slate-400">Neon Connection String</label>
+                    <p className="text-xs text-slate-500 mb-2">Paste your Postgres URL from the Neon Dashboard here.</p>
+                    <input 
+                        type="password"
+                        placeholder="postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/neondb"
+                        className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-white focus:border-neon-500 outline-none"
+                        value={tempUrl}
+                        onChange={(e) => setTempUrl(e.target.value)}
+                    />
+                </div>
+                <button 
+                    onClick={handleSaveConfig}
+                    className="w-full bg-neon-500 hover:bg-neon-400 text-black font-bold py-2 rounded flex items-center justify-center gap-2"
+                >
+                    <Save className="w-4 h-4" /> Save & Reload
+                </button>
+            </div>
+        )}
+
         {showSqlHelp && (
-            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-lg text-left overflow-hidden">
+            <div className="w-full bg-slate-900 border border-slate-800 rounded-lg text-left overflow-hidden">
                 <div className="bg-slate-950 px-4 py-2 border-b border-slate-800 flex items-center gap-2">
                     <Terminal className="w-4 h-4 text-slate-400" />
                     <span className="text-xs font-mono text-slate-400">db/setup.sql</span>
                 </div>
                 <div className="p-4 overflow-x-auto">
                     <pre className="text-xs font-mono text-neon-400 whitespace-pre">
-{`-- Run this in your Neon SQL Editor to fix the error:
+{`-- Run this in your Neon SQL Editor to fix missing tables:
 
 CREATE TABLE IF NOT EXISTS leagues (
   id SERIAL PRIMARY KEY,
@@ -122,7 +162,11 @@ CREATE TABLE IF NOT EXISTS teams (
   away_goals_for INTEGER NOT NULL,
   away_goals_against INTEGER NOT NULL,
   away_games_played INTEGER NOT NULL
-);`}
+);
+
+-- Seed Data
+INSERT INTO leagues (name, avg_home_goals, avg_away_goals) 
+VALUES ('Premier League', 1.68, 1.35);`}
                     </pre>
                 </div>
                 <div className="bg-slate-950 px-4 py-2 text-center">
@@ -133,9 +177,9 @@ CREATE TABLE IF NOT EXISTS teams (
 
         <button 
           onClick={() => window.location.reload()}
-          className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+          className="text-slate-500 hover:text-white text-sm underline mt-4"
         >
-          Retry Connection
+          Try Reloading
         </button>
       </div>
     );
