@@ -50,13 +50,13 @@
         import { clsx } from 'clsx';
         import { 
             Trash2, Plus, Database, ShieldCheck, Pencil, X, Save, 
-            Loader2, Calculator, AlertTriangle, Terminal, Home as HomeIcon 
+            Loader2, Calculator, AlertTriangle, Terminal, Home as HomeIcon,
+            TrendingUp, TrendingDown, Minus, Target
         } from 'lucide-react';
 
         // --- API CLIENT ---
         const api = async (action, payload = {}) => {
             try {
-                // Direct path to Netlify Function to avoid redirect issues
                 const res = await fetch('/.netlify/functions/api', { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -65,16 +65,13 @@
                 
                 const contentType = res.headers.get("content-type");
                 if (!contentType || !contentType.includes("application/json")) {
-                    // Start of robust error handling
                     const text = await res.text();
                     console.error("Fatal Server Error (Non-JSON):", text);
                     
-                    // Try to extract title from HTML error
                     let errorMsg = "Server connection failed.";
                     const titleMatch = text.match(/<title>(.*?)<\/title>/i);
                     if (titleMatch) errorMsg += ` (${titleMatch[1]})`;
                     
-                    // Detect common Netlify timeouts
                     if (res.status === 502) errorMsg = "Server Timeout (502). The database might be sleeping.";
                     if (res.status === 500) errorMsg = "Internal Server Error (500). Check Function Logs.";
                     
@@ -99,19 +96,106 @@
             );
         }
 
+        function TGLCard({ tgl }) {
+            const getRecommendationColor = (rec) => {
+                if (rec === 'OVER') return 'text-neon-400';
+                if (rec === 'UNDER') return 'text-red-400';
+                return 'text-slate-400';
+            };
+
+            const getRecommendationIcon = (rec) => {
+                if (rec === 'OVER') return TrendingUp;
+                if (rec === 'UNDER') return TrendingDown;
+                return Minus;
+            };
+
+            const getValueBadgeColor = (rating) => {
+                if (rating.includes('STRONG')) return 'bg-neon-500/20 text-neon-400 border-neon-500/50';
+                if (rating.includes('GOOD')) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+                if (rating.includes('SLIGHT')) return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+                return 'bg-slate-700/50 text-slate-400 border-slate-600';
+            };
+
+            const Icon = getRecommendationIcon(tgl.recommendation);
+
+            return React.createElement('div', { className: "bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-xl p-6 space-y-6" },
+                React.createElement('div', { className: "flex items-center justify-between" },
+                    React.createElement('div', { className: "flex items-center gap-3" },
+                        React.createElement('div', { className: "bg-slate-800 p-3 rounded-lg" },
+                            React.createElement(Target, { className: "w-6 h-6 text-neon-400" })
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('h3', { className: "text-lg font-bold text-white" }, "True Goal Line Analysis"),
+                            React.createElement('p', { className: "text-xs text-slate-500" }, "Compare expected goals vs bookmaker line")
+                        )
+                    ),
+                    React.createElement('div', { className: clsx("px-4 py-2 rounded-lg border font-bold text-sm", getValueBadgeColor(tgl.valueRating)) },
+                        tgl.valueRating
+                    )
+                ),
+
+                React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-4 gap-4" },
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Total xG"),
+                        React.createElement('div', { className: "text-2xl font-bold text-white" }, tgl.totalExpectedGoals)
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Bookie Line"),
+                        React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, tgl.bookieLine)
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Difference"),
+                        React.createElement('div', { className: clsx("text-2xl font-bold", tgl.difference > 0 ? 'text-neon-400' : 'text-red-400') }, 
+                            tgl.difference > 0 ? '+' : '', tgl.difference
+                        )
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Confidence"),
+                        React.createElement('div', { className: "text-2xl font-bold text-white" }, tgl.confidence)
+                    )
+                ),
+
+                React.createElement('div', { className: "bg-slate-950 border border-slate-800 rounded-lg p-6" },
+                    React.createElement('div', { className: "flex items-center justify-between mb-4" },
+                        React.createElement('span', { className: "text-sm font-semibold text-slate-400 uppercase" }, "Recommendation"),
+                        React.createElement('div', { className: clsx("flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xl", 
+                            tgl.recommendation === 'OVER' ? 'bg-neon-500/20 text-neon-400' : 
+                            tgl.recommendation === 'UNDER' ? 'bg-red-500/20 text-red-400' : 
+                            'bg-slate-800 text-slate-400'
+                        ) },
+                            React.createElement(Icon, { className: "w-5 h-5" }),
+                            tgl.recommendation
+                        )
+                    ),
+                    React.createElement('div', { className: "grid grid-cols-2 gap-4 mt-4" },
+                        React.createElement('div', { className: "bg-slate-900 p-4 rounded-lg" },
+                            React.createElement('div', { className: "text-xs text-slate-500 mb-2" }, "Over Probability"),
+                            React.createElement('div', { className: "text-xl font-bold text-neon-400" }, tgl.overProbability, "%"),
+                            React.createElement('div', { className: "text-xs text-slate-600 mt-1" }, "Fair Odds: ", tgl.impliedOverOdds)
+                        ),
+                        React.createElement('div', { className: "bg-slate-900 p-4 rounded-lg" },
+                            React.createElement('div', { className: "text-xs text-slate-500 mb-2" }, "Under Probability"),
+                            React.createElement('div', { className: "text-xl font-bold text-red-400" }, tgl.underProbability, "%"),
+                            React.createElement('div', { className: "text-xs text-slate-600 mt-1" }, "Fair Odds: ", tgl.impliedUnderOdds)
+                        )
+                    )
+                )
+            );
+        }
+
         function HomePage() {
             const [leaguesList, setLeaguesList] = useState([]);
             const [teamsList, setTeamsList] = useState([]);
             const [selectedLeague, setSelectedLeague] = useState("");
             const [selectedHome, setSelectedHome] = useState("");
             const [selectedAway, setSelectedAway] = useState("");
+            const [goalLine, setGoalLine] = useState(2.5);
             const [loading, setLoading] = useState(false);
             const [prediction, setPrediction] = useState(null);
             const [error, setError] = useState(null);
 
             useEffect(() => {
                 setLoading(true);
-                // First ping health to wake up DB and check connection
                 api('health')
                     .then(() => api('getLeagues'))
                     .then(setLeaguesList)
@@ -145,7 +229,8 @@
                     const result = await api('predict', {
                         leagueId: parseInt(selectedLeague),
                         homeTeamId: parseInt(selectedHome),
-                        awayTeamId: parseInt(selectedAway)
+                        awayTeamId: parseInt(selectedAway),
+                        goalLine: parseFloat(goalLine)
                     });
                     setPrediction(result);
                 } catch (e) {
@@ -172,9 +257,9 @@
             return React.createElement('div', { className: "space-y-12 py-10" },
                 React.createElement('div', { className: "text-center space-y-4" },
                     React.createElement('h1', { className: "text-4xl md:text-6xl font-black text-white tracking-tighter" }, "MATCH ", React.createElement('span', { className: "text-neon-400" }, "PREDICTOR")),
-                    React.createElement('p', { className: "text-slate-400 max-w-lg mx-auto" }, "Select a league and two teams to generate a probability matrix using Poisson distribution analysis.")
+                    React.createElement('p', { className: "text-slate-400 max-w-lg mx-auto" }, "Advanced football prediction using Dixon-Coles model and True Goal Line analysis.")
                 ),
-                React.createElement('div', { className: "grid md:grid-cols-4 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl" },
+                React.createElement('div', { className: "grid md:grid-cols-5 gap-4 p-6 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-2xl" },
                     React.createElement('div', { className: "space-y-2" },
                         React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "League"),
                         React.createElement('select', { className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", value: selectedLeague, onChange: (e) => setSelectedLeague(e.target.value) },
@@ -196,6 +281,10 @@
                             teamsList.map(t => React.createElement('option', { key: t.id, value: t.id }, t.name))
                         )
                     ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Goal Line"),
+                        React.createElement('input', { type: "number", step: "0.5", className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", value: goalLine, onChange: (e) => setGoalLine(e.target.value) })
+                    ),
                     React.createElement('div', { className: "flex items-end" },
                         React.createElement('button', { onClick: handleCalculate, disabled: loading || !selectedHome || !selectedAway, className: "w-full bg-neon-500 hover:bg-neon-400 text-slate-950 font-bold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" },
                             loading ? React.createElement(Loader2, { className: "animate-spin w-5 h-5" }) : React.createElement(Calculator, { className: "w-5 h-5" }), "CALCULATE"
@@ -208,9 +297,12 @@
                         React.createElement(StatCard, { label: "Draw", value: (prediction.drawProb * 100).toFixed(1) + "%", sub: "Neutral Outcome", color: "text-slate-200" }),
                         React.createElement(StatCard, { label: "Away Win", value: (prediction.awayWinProb * 100).toFixed(1) + "%", sub: `xG: ${prediction.awayExpGoals.toFixed(2)}`, color: "text-red-400" })
                     ),
+                    
+                    prediction.trueGoalLine && React.createElement(TGLCard, { tgl: prediction.trueGoalLine }),
+
                     React.createElement('div', { className: "overflow-x-auto" },
                         React.createElement('div', { className: "min-w-[600px] bg-slate-900 border border-slate-800 rounded-xl p-6" },
-                            React.createElement('h3', { className: "text-lg font-bold text-white mb-4" }, "Scoreline Probability Matrix (%)"),
+                            React.createElement('h3', { className: "text-lg font-bold text-white mb-4" }, "Dixon-Coles Probability Matrix (%)"),
                             React.createElement('div', { className: "grid grid-cols-[auto_repeat(6,1fr)] gap-1" },
                                 React.createElement('div', { className: "flex items-center justify-center font-bold text-slate-500 text-xs p-2" }, "H \\ A"),
                                 [0,1,2,3,4,5].map(g => React.createElement('div', { key: `head-${g}`, className: "flex items-center justify-center font-bold text-slate-400 bg-slate-950/50 p-2 rounded" }, g)),
@@ -240,7 +332,6 @@
             const [teamForm, setTeamForm] = useState({ league_id: '', name: '', home_goals_for: 0, home_goals_against: 0, home_games_played: 0, away_goals_for: 0, away_goals_against: 0, away_games_played: 0 });
 
             async function verifyPin(p) {
-                // In a real app, verify this on server. For now, matching previous logic.
                 return p === '1234'; 
             }
 
@@ -314,8 +405,8 @@
                         React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, editingLeagueId ? 'Edit League' : 'Add League'),
                         React.createElement('input', { placeholder: "Name", className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.name, onChange: (e) => setLeagueForm({...leagueForm, name: e.target.value}) }),
                         React.createElement('div', { className: "grid grid-cols-2 gap-4" },
-                            React.createElement('input', { type: "number", step: "0.1", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgHome, onChange: (e) => setLeagueForm({...leagueForm, avgHome: parseFloat(e.target.value)}) }),
-                            React.createElement('input', { type: "number", step: "0.1", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgAway, onChange: (e) => setLeagueForm({...leagueForm, avgAway: parseFloat(e.target.value)}) })
+                            React.createElement('input', { type: "number", step: "0.1", placeholder: "Avg Home Goals", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgHome, onChange: (e) => setLeagueForm({...leagueForm, avgHome: parseFloat(e.target.value)}) }),
+                            React.createElement('input', { type: "number", step: "0.1", placeholder: "Avg Away Goals", className: "bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.avgAway, onChange: (e) => setLeagueForm({...leagueForm, avgAway: parseFloat(e.target.value)}) })
                         ),
                         React.createElement('button', { onClick: submitLeague, className: "w-full bg-neon-500 text-black font-bold py-3 rounded" }, editingLeagueId ? 'Update' : 'Create')
                     ),
