@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getLeagues, getTeams, calculatePrediction, type League, type Team, type PredictionResult } from './actions';
 import { clsx } from 'clsx';
-import { Loader2, Calculator, AlertTriangle, Database, Terminal, Save } from 'lucide-react';
+import { Loader2, Calculator, AlertTriangle, Database, Terminal, Save, Plug } from 'lucide-react';
 
 export default function Home() {
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -29,24 +29,32 @@ export default function Home() {
         setTempUrl(localStorage.getItem('DATABASE_URL') || "");
     }
 
+    setLoading(true);
     getLeagues()
       .then(setLeagues)
       .catch(err => {
-        console.error("Failed to load leagues:", err);
-        const errMsg = err.message || "";
+        const errMsg = err instanceof Error ? err.message : String(err);
         
+        // 1. Missing Tables Error
         if (errMsg.includes("relation") && errMsg.includes("does not exist")) {
-            setError("Database tables are missing.");
+            console.warn("Schema missing:", errMsg);
+            setError("Database setup required");
             setShowSqlHelp(true);
-        } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("Invalid URL")) {
-            setError("Connection failed. Please check your Database URL.");
+        
+        // 2. Connection/Network Error (Common if URL is missing/invalid)
+        } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError") || errMsg.includes("Invalid URL") || errMsg.includes("getaddrinfo")) {
+            // Don't log to console.error to avoid noise
+            setError("Connect your database");
             setShowConfigInput(true);
+            
         } else {
+            // 3. Unknown Error
+            console.error("Failed to load leagues:", err);
             setError(errMsg || "Unknown database error");
-            // If we have no leagues and an unknown error, it's likely a config issue
             setShowConfigInput(true);
         }
-      });
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // Load Teams when League changes
@@ -113,12 +121,13 @@ export default function Home() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-6 text-center px-4 max-w-3xl mx-auto">
-        <div className="bg-red-500/10 p-4 rounded-full">
-            <AlertTriangle className="w-12 h-12 text-red-500" />
+        <div className={clsx("p-4 rounded-full", showConfigInput ? "bg-neon-500/10" : "bg-red-500/10")}>
+            {showConfigInput ? <Database className="w-12 h-12 text-neon-500" /> : <AlertTriangle className="w-12 h-12 text-red-500" />}
         </div>
         <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-white">Database Error</h2>
-            <p className="text-red-300 max-w-md mx-auto">{error}</p>
+            <h2 className="text-2xl font-bold text-white">{error}</h2>
+            {/* Only show error detail if it's not a simple setup prompt */}
+            {!showConfigInput && !showSqlHelp && <p className="text-red-300 max-w-md mx-auto">{error}</p>}
         </div>
 
         {showConfigInput && (
@@ -138,7 +147,7 @@ export default function Home() {
                     onClick={handleSaveConfig}
                     className="w-full bg-neon-500 hover:bg-neon-400 text-black font-bold py-2 rounded flex items-center justify-center gap-2"
                 >
-                    <Save className="w-4 h-4" /> Save & Reload
+                    <Save className="w-4 h-4" /> Save & Connect
                 </button>
             </div>
         )}
@@ -182,13 +191,16 @@ VALUES ('Premier League', 1.68, 1.35);`}
                 </div>
             </div>
         )}
-
-        <button 
-          onClick={() => window.location.reload()}
-          className="text-slate-500 hover:text-white text-sm underline mt-4"
-        >
-          Try Reloading
-        </button>
+        
+        {/* Retry button is useful for network blips, but hides for simple config setup */}
+        {!showConfigInput && (
+            <button 
+              onClick={() => window.location.reload()}
+              className="text-slate-500 hover:text-white text-sm underline mt-4"
+            >
+              Try Reloading
+            </button>
+        )}
       </div>
     );
   }
