@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { verifyPin, createLeague, updateLeague, createTeam, updateTeam, getLeagues, getTeams, deleteTeam, type League, type Team } from '@/app/actions';
+import { verifyPin, createLeague, updateLeague, createTeam, updateTeam, getLeagues, getTeams, deleteTeam, type League, type Team } from '../actions';
 import { Trash2, Plus, Database, ShieldCheck, Pencil, X, Save } from 'lucide-react';
 
 export default function AdminPage() {
@@ -32,22 +32,30 @@ export default function AdminPage() {
       setAuthorized(true);
       refreshData();
     } else {
-      alert("Invalid PIN");
+      alert("Invalid PIN. Try '1234' for demo.");
     }
   };
 
   const refreshData = async () => {
-    const l = await getLeagues();
-    setLeagues(l);
-    if (l.length > 0 && !teamForm.league_id) {
-       setTeamForm(prev => ({ ...prev, league_id: l[0].id.toString() }));
+    try {
+        const l = await getLeagues();
+        setLeagues(l);
+        if (l.length > 0 && !teamForm.league_id) {
+           setTeamForm(prev => ({ ...prev, league_id: l[0].id.toString() }));
+        }
+    } catch (error) {
+        console.error("Error loading admin data:", error);
+        // Fallback for demo if DB isn't connected
+        if (leagues.length === 0) {
+            setLeagues([]); 
+        }
     }
   };
 
   // Effect to fetch teams when league dropdown changes in team form
   useEffect(() => {
     if (authorized && teamForm.league_id) {
-      getTeams(parseInt(teamForm.league_id)).then(setTeams);
+      getTeams(parseInt(teamForm.league_id)).then(setTeams).catch(console.error);
     }
   }, [authorized, teamForm.league_id]);
 
@@ -147,7 +155,7 @@ export default function AdminPage() {
         <div className="flex gap-2">
           <input 
             type="password" 
-            placeholder="Enter PIN" 
+            placeholder="Enter PIN (Demo: 1234)" 
             className="bg-slate-900 border border-slate-800 rounded px-4 py-2 text-white"
             value={pin}
             onChange={(e) => setPin(e.target.value)}

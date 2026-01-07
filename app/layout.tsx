@@ -1,5 +1,4 @@
 import React from "react";
-import "./globals.css";
 
 // Replaced Next.js Link and Font with standard HTML/CSS for local browser testing
 // The index.tsx router intercepts these <a> tags.
