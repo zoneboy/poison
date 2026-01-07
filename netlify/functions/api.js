@@ -38,11 +38,7 @@ const poisson = (k, lambda) => {
 };
 
 // --- DIXON-COLES CORRELATION FACTOR ---
-// The rho parameter adjusts probabilities for low-scoring games
-// Typical values range from -0.15 to 0.15
-// Negative values increase correlation (more realistic for football)
 const dixonColesAdjustment = (homeGoals, awayGoals, lambdaHome, lambdaAway, rho = -0.13) => {
-    // Only apply adjustment to low-scoring outcomes
     if (homeGoals > 1 || awayGoals > 1) return 1;
     
     const adjustments = {
@@ -53,6 +49,91 @@ const dixonColesAdjustment = (homeGoals, awayGoals, lambdaHome, lambdaAway, rho 
     };
     
     return adjustments[`${homeGoals},${awayGoals}`] || 1;
+};
+
+// --- TRUE GOAL LINE (TGL) ANALYZER ---
+const analyzeTGL = (totalExpectedGoals, bookieLine = 2.5) => {
+    const margin = 0.20; // 0.20 goals margin for "value" threshold
+    
+    let recommendation = "";
+    let valueRating = "";
+    let confidence = "";
+    
+    const difference = totalExpectedGoals - bookieLine;
+    const absDiff = Math.abs(difference);
+    
+    if (totalExpectedGoals > bookieLine + margin) {
+        recommendation = "OVER";
+        if (absDiff > 0.5) {
+            valueRating = "STRONG VALUE";
+            confidence = "High";
+        } else if (absDiff > 0.3) {
+            valueRating = "GOOD VALUE";
+            confidence = "Medium";
+        } else {
+            valueRating = "SLIGHT VALUE";
+            confidence = "Low";
+        }
+    } else if (totalExpectedGoals < bookieLine - margin) {
+        recommendation = "UNDER";
+        if (absDiff > 0.5) {
+            valueRating = "STRONG VALUE";
+            confidence = "High";
+        } else if (absDiff > 0.3) {
+            valueRating = "GOOD VALUE";
+            confidence = "Medium";
+        } else {
+            valueRating = "SLIGHT VALUE";
+            confidence = "Low";
+        }
+    } else {
+        recommendation = "NO BET";
+        valueRating = "LINE IS ACCURATE";
+        confidence = "N/A";
+    }
+    
+    return {
+        totalExpectedGoals: parseFloat(totalExpectedGoals.toFixed(2)),
+        bookieLine,
+        difference: parseFloat(difference.toFixed(2)),
+        recommendation,
+        valueRating,
+        confidence
+    };
+};
+
+// --- CALCULATE GOAL LINE PROBABILITIES ---
+const calculateGoalLineProbabilities = (homeExpGoals, awayExpGoals, line = 2.5) => {
+    const totalLambda = homeExpGoals + awayExpGoals;
+    let overProb = 0;
+    let underProb = 0;
+    
+    // Calculate probabilities for total goals (sum of home + away)
+    // Using convolution of two Poisson distributions
+    const maxGoals = 15;
+    
+    for (let total = 0; total <= maxGoals; total++) {
+        let probTotal = 0;
+        
+        // Sum all combinations that give this total
+        for (let h = 0; h <= total; h++) {
+            const a = total - h;
+            probTotal += poisson(h, homeExpGoals) * poisson(a, awayExpGoals);
+        }
+        
+        if (total > line) {
+            overProb += probTotal;
+        } else {
+            underProb += probTotal;
+        }
+    }
+    
+    return {
+        overProbability: parseFloat((overProb * 100).toFixed(2)),
+        underProbability: parseFloat((underProb * 100).toFixed(2)),
+        impliedOverOdds: overProb > 0 ? parseFloat((1 / overProb).toFixed(2)) : null,
+        impliedUnderOdds: underProb > 0 ? parseFloat((1 / underProb).toFixed(2)) : null
+    };
 };
 
 // --- RESPONSE HELPER ---
@@ -71,12 +152,10 @@ const response = (statusCode, body) => ({
 exports.handler = async (event, context) => {
     console.log("Function invoked:", event.httpMethod, event.path);
 
-    // Handle CORS preflight
     if (event.httpMethod === 'OPTIONS') {
         return response(200, { message: 'OK' });
     }
 
-    // 1. Initialize DB
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
         console.error("DATABASE_URL is missing in environment variables.");
@@ -87,7 +166,6 @@ exports.handler = async (event, context) => {
         const sql = neon(dbUrl);
         const db = drizzle(sql, { schema });
 
-        // 2. Parse Request
         let body = {};
         try {
             body = event.body ? JSON.parse(event.body) : {};
@@ -187,11 +265,13 @@ exports.handler = async (event, context) => {
                 // Expected goals (lambda parameters)
                 const homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
                 const awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
+                const totalExpectedGoals = homeExpGoals + awayExpGoals;
 
-                // Get rho parameter from payload or use default
+                // Get optional parameters
                 const rho = payload.rho !== undefined ? payload.rho : -0.13;
+                const goalLine = payload.goalLine !== undefined ? payload.goalLine : 2.5;
 
-                // Calculate probability matrices - both basic Poisson and Dixon-Coles
+                // Calculate probability matrices
                 const matrixSize = 6;
                 const poissonMatrix = [];
                 const dixonColesMatrix = [];
@@ -207,16 +287,13 @@ exports.handler = async (event, context) => {
                     for (let a = 0; a < matrixSize; a++) {
                         const probAway = poisson(a, awayExpGoals);
                         
-                        // Basic Poisson probability
                         const poissonProb = probHome * probAway;
                         poissonRow.push({ h, a, prob: poissonProb });
                         
-                        // Dixon-Coles adjusted probability
                         const adjustment = dixonColesAdjustment(h, a, homeExpGoals, awayExpGoals, rho);
                         const dcProb = poissonProb * adjustment;
                         dcRow.push({ h, a, prob: dcProb, adjustment });
                         
-                        // Accumulate outcome probabilities
                         if (h > a) {
                             poissonHomeWin += poissonProb;
                             dcHomeWin += dcProb;
@@ -233,9 +310,14 @@ exports.handler = async (event, context) => {
                     dixonColesMatrix.push(dcRow);
                 }
 
+                // TRUE GOAL LINE ANALYSIS
+                const tglAnalysis = analyzeTGL(totalExpectedGoals, goalLine);
+                const goalLineProbabilities = calculateGoalLineProbabilities(homeExpGoals, awayExpGoals, goalLine);
+
                 result = {
-                    homeExpGoals,
-                    awayExpGoals,
+                    homeExpGoals: parseFloat(homeExpGoals.toFixed(2)),
+                    awayExpGoals: parseFloat(awayExpGoals.toFixed(2)),
+                    totalExpectedGoals: parseFloat(totalExpectedGoals.toFixed(2)),
                     rho,
                     poisson: {
                         homeWinProb: poissonHomeWin,
@@ -249,7 +331,11 @@ exports.handler = async (event, context) => {
                         awayWinProb: dcAwayWin,
                         matrix: dixonColesMatrix
                     },
-                    // For backwards compatibility, use Dixon-Coles as default
+                    trueGoalLine: {
+                        ...tglAnalysis,
+                        ...goalLineProbabilities
+                    },
+                    // Backwards compatibility
                     homeWinProb: dcHomeWin,
                     drawProb: dcDraw,
                     awayWinProb: dcAwayWin,
