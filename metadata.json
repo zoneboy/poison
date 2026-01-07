@@ -1,0 +1,5 @@
+{
+  "name": "Neon Football Predictor",
+  "description": "A professional football match prediction dashboard using Poisson distribution math, powered by Neon Postgres and Next.js.",
+  "requestFramePermissions": []
+}
