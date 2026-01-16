@@ -196,6 +196,7 @@ const analyzeBTTS = (homeExpGoals, awayExpGoals, lambda3, bookieBTTSOdds = 1.80)
     const probZeroZero_Indep = probHomeZero_Indep * probAwayZero_Indep;
     const probAtLeastOneZero_Indep = probHomeZero_Indep + probAwayZero_Indep - probZeroZero_Indep;
     const probBTTS_Yes_Indep = 1 - probAtLeastOneZero_Indep;
+    const probBTTS_No_Indep = probAtLeastOneZero_Indep;
     
     // METHOD 2: Bivariate Poisson (accounts for dependency)
     // Calculate exact probabilities for key scorelines using bivariate model
