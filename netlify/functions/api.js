@@ -37,6 +37,60 @@ const poisson = (k, lambda) => {
     return (Math.exp(-lambda) * Math.pow(lambda, k)) / factorial(k);
 };
 
+// --- BIVARIATE POISSON MODEL ---
+// Models dependency between home and away goals using covariance parameter lambda3
+const bivariatePoissonProbability = (homeGoals, awayGoals, lambda1, lambda2, lambda3) => {
+    // lambda1 = independent home goals parameter
+    // lambda2 = independent away goals parameter
+    // lambda3 = covariance parameter (dependency between home and away)
+    
+    // Ensure lambda3 is non-negative and doesn't exceed min(lambda1, lambda2)
+    const lambda3Safe = Math.max(0, Math.min(lambda3, lambda1, lambda2));
+    
+    // Adjusted parameters for independent components
+    const lambda1Star = lambda1 - lambda3Safe;
+    const lambda2Star = lambda2 - lambda3Safe;
+    
+    let probability = 0;
+    
+    // Sum over all possible values of the common component
+    const minGoals = Math.min(homeGoals, awayGoals);
+    
+    for (let k = 0; k <= minGoals; k++) {
+        const term1 = poisson(homeGoals - k, lambda1Star);
+        const term2 = poisson(awayGoals - k, lambda2Star);
+        const term3 = poisson(k, lambda3Safe);
+        
+        probability += term1 * term2 * term3;
+    }
+    
+    return probability;
+};
+
+// --- ESTIMATE LAMBDA3 FROM LEAGUE DATA ---
+// Covariance typically ranges from -0.1 to 0.3
+// Negative covariance = anti-correlation (one team scoring reduces other's chances)
+// Positive covariance = correlation (high-scoring games)
+const estimateLambda3 = (homeExpGoals, awayExpGoals, leagueAvgHome, leagueAvgAway) => {
+    // Default approach: slight positive covariance for attacking games
+    // Typical football shows small positive correlation (0.05 to 0.15)
+    
+    const totalExpected = homeExpGoals + awayExpGoals;
+    const leagueAvgTotal = leagueAvgHome + leagueAvgAway;
+    
+    // Higher scoring games tend to have more dependency
+    if (totalExpected > leagueAvgTotal * 1.2) {
+        // High-scoring game expected: moderate positive covariance
+        return Math.min(0.15, homeExpGoals * 0.08, awayExpGoals * 0.08);
+    } else if (totalExpected < leagueAvgTotal * 0.8) {
+        // Low-scoring game expected: slight negative covariance
+        return -0.05;
+    } else {
+        // Average game: small positive covariance
+        return 0.10;
+    }
+};
+
 // --- DIXON-COLES CORRELATION FACTOR ---
 const dixonColesAdjustment = (homeGoals, awayGoals, lambdaHome, lambdaAway, rho = -0.13) => {
     if (homeGoals > 1 || awayGoals > 1) return 1;
@@ -134,44 +188,50 @@ const calculateGoalLineProbabilities = (homeExpGoals, awayExpGoals, line = 2.5) 
 };
 
 // --- BTTS (BOTH TEAMS TO SCORE) ANALYZER ---
-const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
-    // Probability that home team scores 0 goals
-    const probHomeZero = Math.exp(-homeExpGoals);
+// Enhanced with Bivariate Poisson for more accurate dependency modeling
+const analyzeBTTS = (homeExpGoals, awayExpGoals, lambda3, bookieBTTSOdds = 1.80) => {
+    // METHOD 1: Standard Independent Poisson (for comparison)
+    const probHomeZero_Indep = Math.exp(-homeExpGoals);
+    const probAwayZero_Indep = Math.exp(-awayExpGoals);
+    const probZeroZero_Indep = probHomeZero_Indep * probAwayZero_Indep;
+    const probAtLeastOneZero_Indep = probHomeZero_Indep + probAwayZero_Indep - probZeroZero_Indep;
+    const probBTTS_Yes_Indep = 1 - probAtLeastOneZero_Indep;
     
-    // Probability that away team scores 0 goals
-    const probAwayZero = Math.exp(-awayExpGoals);
+    // METHOD 2: Bivariate Poisson (accounts for dependency)
+    // Calculate exact probabilities for key scorelines using bivariate model
+    const prob_0_0_Biv = bivariatePoissonProbability(0, 0, homeExpGoals, awayExpGoals, lambda3);
     
-    // Probability that both teams score 0 (0-0)
-    const probZeroZero = probHomeZero * probAwayZero;
+    // P(Home = 0) = sum of all (0, k) for k >= 0
+    let probHomeZero_Biv = 0;
+    for (let k = 0; k <= 10; k++) {
+        probHomeZero_Biv += bivariatePoissonProbability(0, k, homeExpGoals, awayExpGoals, lambda3);
+    }
     
-    // Probability that at least one team doesn't score
-    // = P(Home=0) + P(Away=0) - P(Both=0)
-    const probAtLeastOneZero = probHomeZero + probAwayZero - probZeroZero;
+    // P(Away = 0) = sum of all (k, 0) for k >= 0
+    let probAwayZero_Biv = 0;
+    for (let k = 0; k <= 10; k++) {
+        probAwayZero_Biv += bivariatePoissonProbability(k, 0, homeExpGoals, awayExpGoals, lambda3);
+    }
     
-    // Probability that BOTH teams score (BTTS YES / GG)
-    const probBTTS_Yes = 1 - probAtLeastOneZero;
-    const probBTTS_No = probAtLeastOneZero;
+    // P(At least one team doesn't score) = P(H=0) + P(A=0) - P(0-0)
+    const probAtLeastOneZero_Biv = probHomeZero_Biv + probAwayZero_Biv - prob_0_0_Biv;
     
-    // Fair odds calculation
-    const fairOddsBTTS_Yes = probBTTS_Yes > 0 ? 1 / probBTTS_Yes : null;
-    const fairOddsBTTS_No = probBTTS_No > 0 ? 1 / probBTTS_No : null;
+    // P(Both teams score)
+    const probBTTS_Yes_Biv = 1 - probAtLeastOneZero_Biv;
+    const probBTTS_No_Biv = probAtLeastOneZero_Biv;
     
-    // Value analysis - the input is BTTS YES odds from bookmaker
+    // Fair odds calculation (using Bivariate model)
+    const fairOddsBTTS_Yes = probBTTS_Yes_Biv > 0 ? 1 / probBTTS_Yes_Biv : null;
+    const fairOddsBTTS_No = probBTTS_No_Biv > 0 ? 1 / probBTTS_No_Biv : null;
+    
+    // Value analysis
     let recommendation = "NO BET";
     let valueRating = "NO CLEAR VALUE";
     let confidence = "N/A";
     let expectedValue = 0;
     
     if (bookieBTTSOdds && fairOddsBTTS_Yes) {
-        // VALUE ON BTTS YES: When bookie odds are HIGHER than fair odds
-        // Example: Fair = 1.93, Bookie = 2.10 → Value on YES
         const valueDiffYes = bookieBTTSOdds - fairOddsBTTS_Yes;
-        
-        // VALUE ON BTTS NO: Calculate implied "No" odds
-        // If bookie offers 1.68 for Yes, and we think fair is 1.93,
-        // it means the market undervalues "Yes" → potential value on "No"
-        // But we need to know the actual BTTS No odds from bookie to determine this
-        // Since we only have YES odds, we'll check if YES odds are significantly lower than fair
         
         if (valueDiffYes > 0.30) {
             recommendation = "BET BTTS YES";
@@ -189,7 +249,6 @@ const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
             confidence = "Low";
             expectedValue = valueDiffYes;
         } else if (valueDiffYes < -0.20) {
-            // Bookie odds much lower than fair = overpriced YES = potential value on NO
             recommendation = "CONSIDER BTTS NO";
             valueRating = "BOOKIE UNDERPRICING YES";
             confidence = "Medium";
@@ -203,10 +262,22 @@ const analyzeBTTS = (homeExpGoals, awayExpGoals, bookieBTTSOdds = 1.80) => {
     }
     
     return {
-        probHomeZero: parseFloat((probHomeZero * 100).toFixed(2)),
-        probAwayZero: parseFloat((probAwayZero * 100).toFixed(2)),
-        probBTTS_Yes: parseFloat((probBTTS_Yes * 100).toFixed(2)),
-        probBTTS_No: parseFloat((probBTTS_No * 100).toFixed(2)),
+        // Bivariate Poisson results (primary)
+        probHomeZero: parseFloat((probHomeZero_Biv * 100).toFixed(2)),
+        probAwayZero: parseFloat((probAwayZero_Biv * 100).toFixed(2)),
+        prob_0_0: parseFloat((prob_0_0_Biv * 100).toFixed(2)),
+        probBTTS_Yes: parseFloat((probBTTS_Yes_Biv * 100).toFixed(2)),
+        probBTTS_No: parseFloat((probBTTS_No_Biv * 100).toFixed(2)),
+        
+        // Independent Poisson comparison
+        probBTTS_Yes_Independent: parseFloat((probBTTS_Yes_Indep * 100).toFixed(2)),
+        probBTTS_No_Independent: parseFloat((probBTTS_No_Indep * 100).toFixed(2)),
+        
+        // Model parameters
+        lambda3: parseFloat(lambda3.toFixed(3)),
+        modelType: lambda3 !== 0 ? "Bivariate Poisson" : "Independent Poisson",
+        
+        // Fair odds and value
         fairOddsBTTS_Yes: fairOddsBTTS_Yes ? parseFloat(fairOddsBTTS_Yes.toFixed(2)) : null,
         fairOddsBTTS_No: fairOddsBTTS_No ? parseFloat(fairOddsBTTS_No.toFixed(2)) : null,
         bookieOddsYes: bookieBTTSOdds,
@@ -352,58 +423,78 @@ exports.handler = async (event, context) => {
                 const rho = payload.rho !== undefined ? payload.rho : -0.13;
                 const goalLine = payload.goalLine !== undefined ? payload.goalLine : 2.5;
                 const bttsOdds = payload.bttsOdds !== undefined ? payload.bttsOdds : 1.80;
+                
+                // Estimate lambda3 for Bivariate Poisson (or use provided value)
+                const lambda3 = payload.lambda3 !== undefined 
+                    ? payload.lambda3 
+                    : estimateLambda3(homeExpGoals, awayExpGoals, leagueData.avg_home_goals, leagueData.avg_away_goals);
 
                 // Calculate probability matrices
                 const matrixSize = 6;
                 const poissonMatrix = [];
                 const dixonColesMatrix = [];
+                const bivariateMatrix = [];
                 
                 let poissonHomeWin = 0, poissonDraw = 0, poissonAwayWin = 0;
                 let dcHomeWin = 0, dcDraw = 0, dcAwayWin = 0;
+                let bivHomeWin = 0, bivDraw = 0, bivAwayWin = 0;
 
                 for (let h = 0; h < matrixSize; h++) {
                     const poissonRow = [];
                     const dcRow = [];
+                    const bivRow = [];
                     const probHome = poisson(h, homeExpGoals);
                     
                     for (let a = 0; a < matrixSize; a++) {
                         const probAway = poisson(a, awayExpGoals);
                         
+                        // Standard Poisson
                         const poissonProb = probHome * probAway;
                         poissonRow.push({ h, a, prob: poissonProb });
                         
+                        // Dixon-Coles
                         const adjustment = dixonColesAdjustment(h, a, homeExpGoals, awayExpGoals, rho);
                         const dcProb = poissonProb * adjustment;
                         dcRow.push({ h, a, prob: dcProb, adjustment });
                         
+                        // Bivariate Poisson
+                        const bivProb = bivariatePoissonProbability(h, a, homeExpGoals, awayExpGoals, lambda3);
+                        bivRow.push({ h, a, prob: bivProb });
+                        
+                        // Accumulate probabilities
                         if (h > a) {
                             poissonHomeWin += poissonProb;
                             dcHomeWin += dcProb;
+                            bivHomeWin += bivProb;
                         } else if (h === a) {
                             poissonDraw += poissonProb;
                             dcDraw += dcProb;
+                            bivDraw += bivProb;
                         } else {
                             poissonAwayWin += poissonProb;
                             dcAwayWin += dcProb;
+                            bivAwayWin += bivProb;
                         }
                     }
                     
                     poissonMatrix.push(poissonRow);
                     dixonColesMatrix.push(dcRow);
+                    bivariateMatrix.push(bivRow);
                 }
 
                 // TRUE GOAL LINE ANALYSIS
                 const tglAnalysis = analyzeTGL(totalExpectedGoals, goalLine);
                 const goalLineProbabilities = calculateGoalLineProbabilities(homeExpGoals, awayExpGoals, goalLine);
 
-                // BTTS ANALYSIS
-                const bttsAnalysis = analyzeBTTS(homeExpGoals, awayExpGoals, bttsOdds);
+                // BTTS ANALYSIS (using Bivariate Poisson)
+                const bttsAnalysis = analyzeBTTS(homeExpGoals, awayExpGoals, lambda3, bttsOdds);
 
                 result = {
                     homeExpGoals: parseFloat(homeExpGoals.toFixed(2)),
                     awayExpGoals: parseFloat(awayExpGoals.toFixed(2)),
                     totalExpectedGoals: parseFloat(totalExpectedGoals.toFixed(2)),
                     rho,
+                    lambda3: parseFloat(lambda3.toFixed(3)),
                     poisson: {
                         homeWinProb: poissonHomeWin,
                         drawProb: poissonDraw,
@@ -416,12 +507,18 @@ exports.handler = async (event, context) => {
                         awayWinProb: dcAwayWin,
                         matrix: dixonColesMatrix
                     },
+                    bivariatePoisson: {
+                        homeWinProb: bivHomeWin,
+                        drawProb: bivDraw,
+                        awayWinProb: bivAwayWin,
+                        matrix: bivariateMatrix
+                    },
                     trueGoalLine: {
                         ...tglAnalysis,
                         ...goalLineProbabilities
                     },
                     btts: bttsAnalysis,
-                    // Backwards compatibility
+                    // Backwards compatibility - use Dixon-Coles as default
                     homeWinProb: dcHomeWin,
                     drawProb: dcDraw,
                     awayWinProb: dcAwayWin,

@@ -130,11 +130,13 @@
                 React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-4 gap-4" },
                     React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
                         React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "BTTS Yes"),
-                        React.createElement('div', { className: "text-2xl font-bold text-neon-400" }, btts.probBTTS_Yes, "%")
+                        React.createElement('div', { className: "text-2xl font-bold text-neon-400" }, btts.probBTTS_Yes, "%"),
+                        React.createElement('div', { className: "text-[10px] text-slate-600 mt-1" }, btts.modelType)
                     ),
                     React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
                         React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "BTTS No"),
-                        React.createElement('div', { className: "text-2xl font-bold text-red-400" }, btts.probBTTS_No, "%")
+                        React.createElement('div', { className: "text-2xl font-bold text-red-400" }, btts.probBTTS_No, "%"),
+                        React.createElement('div', { className: "text-[10px] text-slate-600 mt-1" }, "λ₃ = ", btts.lambda3)
                     ),
                     React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
                         React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Home 0 Goals"),
@@ -143,6 +145,28 @@
                     React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
                         React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Away 0 Goals"),
                         React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, btts.probAwayZero, "%")
+                    )
+                ),
+
+                btts.probBTTS_Yes_Independent && React.createElement('div', { className: "bg-slate-900/50 border border-slate-700 rounded-lg p-4" },
+                    React.createElement('div', { className: "text-xs font-semibold text-slate-400 mb-2 uppercase" }, "Model Comparison"),
+                    React.createElement('div', { className: "grid grid-cols-2 gap-4 text-sm" },
+                        React.createElement('div', null,
+                            React.createElement('span', { className: "text-slate-500" }, "Bivariate: "),
+                            React.createElement('span', { className: "text-white font-bold" }, btts.probBTTS_Yes, "%")
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('span', { className: "text-slate-500" }, "Independent: "),
+                            React.createElement('span', { className: "text-slate-400 font-bold" }, btts.probBTTS_Yes_Independent, "%")
+                        )
+                    ),
+                    React.createElement('div', { className: "text-xs text-slate-500 mt-2" },
+                        "Difference: ", 
+                        React.createElement('span', { className: clsx("font-bold", (btts.probBTTS_Yes - btts.probBTTS_Yes_Independent) > 0 ? "text-neon-400" : "text-red-400") },
+                            ((btts.probBTTS_Yes - btts.probBTTS_Yes_Independent) > 0 ? "+" : ""),
+                            (btts.probBTTS_Yes - btts.probBTTS_Yes_Independent).toFixed(2), "%"
+                        ),
+                        " (Bivariate accounts for goal dependency)"
                     )
                 ),
 
