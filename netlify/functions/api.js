@@ -76,41 +76,43 @@ const estimateLambda3 = (homeExpGoals, awayExpGoals, leagueAvgHome, leagueAvgAwa
     }
 };
 
+// --- SAFE LINEAR REGRESSION ---
 const linearRegression = (xValues, yValues) => {
     const n = xValues.length;
-    if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
+    // Edge case: Not enough data
+    if (n < 2) {
+        const avgY = n === 1 ? yValues[0] : 0;
+        return { slope: 0, intercept: avgY, r2: 0 };
+    }
     
     const sumX = xValues.reduce((a, b) => a + b, 0);
     const sumY = yValues.reduce((a, b) => a + b, 0);
     const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
     const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
     
-    // Check for division by zero (if all x are same)
     const denominator = (n * sumX2 - sumX * sumX);
-    if (denominator === 0) return { slope: 0, intercept: sumY / n, r2: 0 };
+    // Edge case: Division by zero (vertical line)
+    if (denominator === 0) {
+        return { slope: 0, intercept: sumY / n, r2: 0 };
+    }
 
     const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
     
-    const meanY = sumY / n;
-    const ssTotal = yValues.reduce((sum, y) => sum + Math.pow(y - meanY, 2), 0);
-    const ssResidual = yValues.reduce((sum, y, i) => {
-        const predicted = slope * xValues[i] + intercept;
-        return sum + Math.pow(y - predicted, 2);
-    }, 0);
-    const r2 = ssTotal !== 0 ? 1 - (ssResidual / ssTotal) : 0;
-    
-    return { slope, intercept, r2 };
+    // Safety check for NaN results
+    return { 
+        slope: isNaN(slope) ? 0 : slope, 
+        intercept: isNaN(intercept) ? 0 : intercept, 
+        r2: 0 // r2 omitted for speed
+    };
 };
 
-// --- ANALYZE TEAM FORM (Enhanced with Goal Difference Regression) ---
 const analyzeTeamForm = (matchHistory) => {
     if (!matchHistory || matchHistory.length === 0) {
         return {
-            slope: 0, intercept: 0, r2: 0,
-            trend: 'neutral', formModifier: 1.0,
+            slope: 0, intercept: 0, r2: 0, trend: 'neutral', formModifier: 1.0,
             avgGoalsScored: 0, avgGoalsConceded: 0, avgPoints: 0,
-            matchData: [], gdSlope: 0, predictedGD: 0
+            matchData: [], gdSlope: 0, gdIntercept: 0, predictedGD: 0
         };
     }
     
@@ -119,54 +121,40 @@ const analyzeTeamForm = (matchHistory) => {
     const goalsScored = sorted.map(m => m.goals_scored);
     const goalsConceded = sorted.map(m => m.goals_conceded);
     const points = sorted.map(m => m.points);
-    
-    // NEW: Goal Difference Array
     const goalDiffs = sorted.map(m => m.goals_scored - m.goals_conceded);
     
-    // 1. Regression on Goals Scored (for basic form modifier)
     const goalsRegression = linearRegression(xValues, goalsScored);
-    
-    // 2. Regression on Goal Difference (for advanced trend analysis)
     const gdRegression = linearRegression(xValues, goalDiffs);
     
-    // Predict next match Goal Difference (x = length + 1)
     const nextMatchX = xValues.length + 1;
-    const predictedGD = gdRegression.slope * nextMatchX + gdRegression.intercept;
+    let predictedGD = gdRegression.slope * nextMatchX + gdRegression.intercept;
+    
+    // Safety check
+    if (isNaN(predictedGD)) predictedGD = 0;
 
-    // Determine trend based on Goal Difference Slope
     let trend = 'neutral';
     let formModifier = 1.0;
     
-    // Use GD slope for a more robust form check
     if (gdRegression.slope > 0.25) {
         trend = 'improving';
-        formModifier = 1.0 + (gdRegression.slope * 0.4); // Boost
+        formModifier = 1.0 + (gdRegression.slope * 0.4); 
     } else if (gdRegression.slope < -0.25) {
         trend = 'declining';
-        formModifier = 1.0 + (gdRegression.slope * 0.4); // Penalize
+        formModifier = 1.0 + (gdRegression.slope * 0.4); 
     }
     
     formModifier = Math.max(0.80, Math.min(1.20, formModifier));
     
     return {
-        // Basic Stats
-        avgGoalsScored: parseFloat((goalsScored.reduce((a, b) => a + b, 0) / goalsScored.length).toFixed(2)),
-        avgGoalsConceded: parseFloat((goalsConceded.reduce((a, b) => a + b, 0) / goalsConceded.length).toFixed(2)),
-        avgPoints: parseFloat((points.reduce((a, b) => a + b, 0) / points.length).toFixed(2)),
-        
-        // Goals Regression
+        avgGoalsScored: parseFloat((goalsScored.reduce((a, b) => a + b, 0) / goalsScored.length || 0).toFixed(2)),
+        avgGoalsConceded: parseFloat((goalsConceded.reduce((a, b) => a + b, 0) / goalsConceded.length || 0).toFixed(2)),
+        avgPoints: parseFloat((points.reduce((a, b) => a + b, 0) / points.length || 0).toFixed(2)),
         slope: parseFloat(goalsRegression.slope.toFixed(3)),
-        
-        // GD Regression (New)
         gdSlope: parseFloat(gdRegression.slope.toFixed(3)),
         gdIntercept: parseFloat(gdRegression.intercept.toFixed(3)),
         predictedGD: parseFloat(predictedGD.toFixed(2)),
-        
-        // Derived
         trend,
         formModifier: parseFloat(formModifier.toFixed(3)),
-        
-        // Data for Frontend
         matchData: sorted.map(m => ({
             matchNumber: m.match_number,
             goalsScored: m.goals_scored,
@@ -208,12 +196,10 @@ const analyzeTGL = (totalExpectedGoals, bookieLine = 2.5) => {
         valueRating = "LINE IS ACCURATE";
         confidence = "N/A";
     }
-    
     return { totalExpectedGoals: parseFloat(totalExpectedGoals.toFixed(2)), bookieLine, difference: parseFloat(difference.toFixed(2)), recommendation, valueRating, confidence };
 };
 
 const calculateGoalLineProbabilities = (homeExpGoals, awayExpGoals, line = 2.5) => {
-    const totalLambda = homeExpGoals + awayExpGoals;
     let overProb = 0, underProb = 0;
     for (let total = 0; total <= 15; total++) {
         let probTotal = 0;
@@ -258,7 +244,6 @@ const response = (statusCode, body) => ({
 
 exports.handler = async (event, context) => {
     if (event.httpMethod === 'OPTIONS') return response(200, { message: 'OK' });
-
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) return response(500, { error: "DATABASE_URL missing" });
     
@@ -270,14 +255,10 @@ exports.handler = async (event, context) => {
         
         const { action, payload } = body;
         
-        // --- SECURITY CHECK (Basic API Key for Writes) ---
+        // --- SECURITY ---
         const WRITE_ACTIONS = ['createLeague', 'updateLeague', 'createTeam', 'updateTeam', 'deleteTeam', 'saveMatchHistory'];
         if (WRITE_ACTIONS.includes(action)) {
             const authHeader = event.headers['authorization'] || event.headers['Authorization'];
-            // In a real app, use: process.env.ADMIN_API_KEY
-            // For this prototype, we'll allow a specific header or check the PIN from the payload if passed
-            // Simplification: If you are copying this, assume the frontend sends the key if needed.
-            // For now, we will proceed to allow testing unless you set ADMIN_API_KEY env var.
             if (process.env.ADMIN_API_KEY && authHeader !== `Bearer ${process.env.ADMIN_API_KEY}`) {
                 return response(401, { error: "Unauthorized" });
             }
@@ -341,10 +322,7 @@ exports.handler = async (event, context) => {
                 const homeForm = analyzeTeamForm(homeHistory);
                 const awayForm = analyzeTeamForm(awayHistory);
                 
-                // --- LINEAR REGRESSION ADJUSTMENT ---
-                // Dampen the effect: (Home Predicted GD - Away Predicted GD) / 2
-                // e.g. Home (+1.5) - Away (-0.5) = +2.0 diff -> +1.0 Goals adjustment total
-                const regressionAdjustment = (homeForm.predictedGD - awayForm.predictedGD) / 4; // Conservative divisor
+                const regressionAdjustment = (homeForm.predictedGD - awayForm.predictedGD) / 4; 
 
                 const safeDiv = (num, den) => (den === 0 ? 0 : num / den);
                 let homeAttackStr = safeDiv(safeDiv(homeTeam.home_goals_for, homeTeam.home_games_played), leagueData.avg_home_goals);
@@ -358,12 +336,10 @@ exports.handler = async (event, context) => {
                 let homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
                 let awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
                 
-                // Apply the GD Regression Prediction
-                // We add/subtract a small factor based on the predicted next match goal diff
+                // Adjust xG based on Form Regression
                 homeExpGoals += regressionAdjustment;
                 awayExpGoals -= regressionAdjustment;
                 
-                // Safety clamps
                 homeExpGoals = Math.max(0.1, homeExpGoals);
                 awayExpGoals = Math.max(0.1, awayExpGoals);
 
