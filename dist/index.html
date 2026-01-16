@@ -111,10 +111,9 @@
                 return 'text-slate-400';
             };
 
-            const HomeIcon = getTrendIcon(homeForm.trend);
-            const AwayIcon = getTrendIcon(awayForm.trend);
+            const HomeTrendIcon = getTrendIcon(homeForm.trend);
+            const AwayTrendIcon = getTrendIcon(awayForm.trend);
 
-            // Calculate max value for scaling the graph
             const allGoals = [...homeForm.matchData, ...awayForm.matchData].map(m => m.goalsScored);
             const maxGoals = Math.max(...allGoals, 3);
 
@@ -135,7 +134,7 @@
                         React.createElement('div', { className: "flex items-center justify-between" },
                             React.createElement('span', { className: "text-sm font-bold text-white" }, homeTeamName || "Home"),
                             React.createElement('div', { className: clsx("flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-bold", getTrendColor(homeForm.trend)) },
-                                React.createElement(HomeIcon, { className: "w-4 h-4" }),
+                                React.createElement(HomeTrendIcon, { className: "w-4 h-4" }),
                                 homeForm.trend.toUpperCase()
                             )
                         ),
@@ -155,12 +154,9 @@
                                 React.createElement('div', { className: "font-bold text-white" }, homeForm.avgGoalsScored)
                             )
                         ),
-                        // Mini chart
                         homeForm.matchData.length > 0 && React.createElement('div', { className: "bg-slate-950 p-3 rounded-lg" },
                             React.createElement('svg', { width: "100%", height: "80", viewBox: "0 0 300 80" },
-                                // Grid lines
                                 React.createElement('line', { x1: 0, y1: 70, x2: 300, y2: 70, stroke: "#334155", strokeWidth: 1 }),
-                                // Actual data points and line
                                 ...homeForm.matchData.map((m, i) => {
                                     const x = 30 + (i * 45);
                                     const y = 70 - (m.goalsScored / maxGoals * 60);
@@ -191,7 +187,6 @@
                                         }, m.matchNumber)
                                     ];
                                 }).flat(),
-                                // Regression line
                                 React.createElement('line', { 
                                     x1: 30, 
                                     y1: 70 - ((homeForm.slope * 1 + homeForm.intercept) / maxGoals * 60),
@@ -211,7 +206,7 @@
                         React.createElement('div', { className: "flex items-center justify-between" },
                             React.createElement('span', { className: "text-sm font-bold text-white" }, awayTeamName || "Away"),
                             React.createElement('div', { className: clsx("flex items-center gap-2 px-3 py-1 rounded-lg text-sm font-bold", getTrendColor(awayForm.trend)) },
-                                React.createElement(AwayIcon, { className: "w-4 h-4" }),
+                                React.createElement(AwayTrendIcon, { className: "w-4 h-4" }),
                                 awayForm.trend.toUpperCase()
                             )
                         ),
@@ -231,12 +226,9 @@
                                 React.createElement('div', { className: "font-bold text-white" }, awayForm.avgGoalsScored)
                             )
                         ),
-                        // Mini chart
                         awayForm.matchData.length > 0 && React.createElement('div', { className: "bg-slate-950 p-3 rounded-lg" },
                             React.createElement('svg', { width: "100%", height: "80", viewBox: "0 0 300 80" },
-                                // Grid lines
                                 React.createElement('line', { x1: 0, y1: 70, x2: 300, y2: 70, stroke: "#334155", strokeWidth: 1 }),
-                                // Actual data points and line
                                 ...awayForm.matchData.map((m, i) => {
                                     const x = 30 + (i * 45);
                                     const y = 70 - (m.goalsScored / maxGoals * 60);
@@ -267,7 +259,6 @@
                                         }, m.matchNumber)
                                     ];
                                 }).flat(),
-                                // Regression line
                                 React.createElement('line', { 
                                     x1: 30, 
                                     y1: 70 - ((awayForm.slope * 1 + awayForm.intercept) / maxGoals * 60),
@@ -293,200 +284,197 @@
         }
 
         function KellyCalculator({ prediction }) {
-    const [bankroll, setBankroll] = useState(1000);
-    const [selectedMarket, setSelectedMarket] = useState('home');
-    const [bookieOdds, setBookieOdds] = useState(2.00);
-    const [kellyFraction, setKellyFraction] = useState(0.25);
+            const [bankroll, setBankroll] = useState(1000);
+            const [selectedMarket, setSelectedMarket] = useState('home');
+            const [bookieOdds, setBookieOdds] = useState(2.00);
+            const [kellyFraction, setKellyFraction] = useState(0.25);
 
-    const getModelProbability = () => {
-        switch(selectedMarket) {
-            case 'home': return prediction.homeWinProb;
-            case 'draw': return prediction.drawProb;
-            case 'away': return prediction.awayWinProb;
-            case 'over': return prediction.trueGoalLine ? prediction.trueGoalLine.overProbability / 100 : 0;
-            case 'under': return prediction.trueGoalLine ? prediction.trueGoalLine.underProbability / 100 : 0;
-            case 'btts_yes': return prediction.btts ? prediction.btts.probBTTS_Yes / 100 : 0;
-            case 'btts_no': return prediction.btts ? prediction.btts.probBTTS_No / 100 : 0;
-            default: return 0;
-        }
-    };
+            const getModelProbability = () => {
+                switch(selectedMarket) {
+                    case 'home': return prediction.homeWinProb;
+                    case 'draw': return prediction.drawProb;
+                    case 'away': return prediction.awayWinProb;
+                    case 'over': return prediction.trueGoalLine ? prediction.trueGoalLine.overProbability / 100 : 0;
+                    case 'under': return prediction.trueGoalLine ? prediction.trueGoalLine.underProbability / 100 : 0;
+                    case 'btts_yes': return prediction.btts ? prediction.btts.probBTTS_Yes / 100 : 0;
+                    case 'btts_no': return prediction.btts ? prediction.btts.probBTTS_No / 100 : 0;
+                    default: return 0;
+                }
+            };
 
-    const modelProb = getModelProbability();
-    const impliedProb = 1 / bookieOdds;
-    
-    const edge = modelProb - impliedProb;
-    const expectedValue = (modelProb * bookieOdds) - 1;
-    const expectedValuePercent = expectedValue * 100;
-    
-    const b = bookieOdds - 1;
-    const q = 1 - modelProb;
-    const fullKelly = edge > 0 ? ((b * modelProb - q) / b) : 0;
-    const fractionalKelly = fullKelly * kellyFraction;
-    
-    const fullKellyStake = bankroll * fullKelly;
-    const fractionalKellyStake = bankroll * fractionalKelly;
-    const potentialProfit = fractionalKellyStake * (bookieOdds - 1);
-    
-    const hasEdge = edge > 0;
-    const riskLevel = fullKelly > 0.10 ? "High" : fullKelly > 0.05 ? "Medium" : fullKelly > 0.02 ? "Low" : "Very Low";
+            const modelProb = getModelProbability();
+            const impliedProb = 1 / bookieOdds;
+            
+            const edge = modelProb - impliedProb;
+            const expectedValue = (modelProb * bookieOdds) - 1;
+            const expectedValuePercent = expectedValue * 100;
+            
+            const b = bookieOdds - 1;
+            const q = 1 - modelProb;
+            const fullKelly = edge > 0 ? ((b * modelProb - q) / b) : 0;
+            
+            const fractionalKelly = fullKelly * kellyFraction;
+            
+            const fullKellyStake = bankroll * fullKelly;
+            const fractionalKellyStake = bankroll * fractionalKelly;
+            
+            const potentialProfit = fractionalKellyStake * (bookieOdds - 1);
+            
+            const hasEdge = edge > 0;
+            const riskLevel = fullKelly > 0.10 ? "High" : fullKelly > 0.05 ? "Medium" : fullKelly > 0.02 ? "Low" : "Very Low";
 
-    return React.createElement('div', { className: "bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-xl p-6 space-y-6" },
-        // Header
-        React.createElement('div', { className: "flex items-center justify-between" },
-            React.createElement('div', { className: "flex items-center gap-3" },
-                React.createElement('div', { className: "bg-slate-800 p-3 rounded-lg" },
-                    React.createElement(DollarSign, { className: "w-6 h-6 text-neon-400" })
-                ),
-                React.createElement('div', null,
-                    React.createElement('h3', { className: "text-lg font-bold text-white" }, "Kelly Criterion Calculator"),
-                    React.createElement('p', { className: "text-xs text-slate-500" }, "Optimal bet sizing for bankroll growth")
-                )
-            ),
-            hasEdge 
-                ? React.createElement('div', { className: "px-4 py-2 rounded-lg border bg-neon-500/20 text-neon-400 border-neon-500/50 font-bold text-sm" }, "POSITIVE EDGE")
-                : React.createElement('div', { className: "px-4 py-2 rounded-lg border bg-red-500/20 text-red-400 border-red-500/50 font-bold text-sm" }, "NEGATIVE EDGE")
-        ),
-
-        // Input Grid
-        React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-4" },
-            React.createElement('div', { className: "space-y-2" },
-                React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Bankroll (₦)"),
-                React.createElement('input', { 
-                    type: "number", 
-                    step: "100",
-                    className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
-                    value: bankroll, 
-                    onChange: (e) => setBankroll(parseFloat(e.target.value) || 0) 
-                })
-            ),
-            React.createElement('div', { className: "space-y-2" },
-                React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Market"),
-                React.createElement('select', { 
-                    className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
-                    value: selectedMarket, 
-                    onChange: (e) => setSelectedMarket(e.target.value) 
-                },
-                    React.createElement('option', { value: "home" }, "Home Win"),
-                    React.createElement('option', { value: "draw" }, "Draw"),
-                    React.createElement('option', { value: "away" }, "Away Win"),
-                    prediction.trueGoalLine && React.createElement('option', { value: "over" }, "Over"),
-                    prediction.trueGoalLine && React.createElement('option', { value: "under" }, "Under"),
-                    prediction.btts && React.createElement('option', { value: "btts_yes" }, "BTTS Yes"),
-                    prediction.btts && React.createElement('option', { value: "btts_no" }, "BTTS No")
-                )
-            ),
-            React.createElement('div', { className: "space-y-2" },
-                React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Bookie Odds"),
-                React.createElement('input', { 
-                    type: "number", 
-                    step: "0.1",
-                    className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
-                    value: bookieOdds, 
-                    onChange: (e) => setBookieOdds(parseFloat(e.target.value) || 1.01) 
-                })
-            ),
-            React.createElement('div', { className: "space-y-2" },
-                React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Kelly Fraction"),
-                React.createElement('input', { 
-                    type: "number", 
-                    step: "0.05",
-                    min: "0.1",
-                    max: "1",
-                    className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
-                    value: kellyFraction, 
-                    onChange: (e) => setKellyFraction(parseFloat(e.target.value) || 0.25) 
-                })
-            )
-        ),
-
-        // Stats Grid
-        React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-5 gap-4" },
-            React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
-                React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Model Probability"),
-                React.createElement('div', { className: "text-2xl font-bold text-white" }, (modelProb * 100).toFixed(2), "%")
-            ),
-            React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
-                React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Implied Probability"),
-                React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, (impliedProb * 100).toFixed(2), "%")
-            ),
-            React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
-                React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Edge"),
-                React.createElement('div', { className: clsx("text-2xl font-bold", edge > 0 ? "text-neon-400" : "text-red-400") }, 
-                    edge > 0 ? "+" : "", (edge * 100).toFixed(2), "%"
-                )
-            ),
-            React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
-                React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Expected Value"),
-                React.createElement('div', { className: clsx("text-2xl font-bold", expectedValue > 0 ? "text-neon-400" : "text-red-400") }, 
-                    expectedValue > 0 ? "+" : "", expectedValuePercent.toFixed(2), "%"
-                )
-            ),
-            React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
-                React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Risk Level"),
-                React.createElement('div', { className: "text-lg font-bold text-white" }, riskLevel)
-            )
-        ),
-
-        // Kelly Results
-        React.createElement('div', { className: "bg-slate-950 border border-slate-800 rounded-lg p-6" },
-            React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-6" },
-                React.createElement('div', null,
-                    React.createElement('div', { className: "text-sm font-semibold text-slate-400 uppercase mb-3" }, "Full Kelly (100%)"),
-                    React.createElement('div', { className: "space-y-3" },
-                        React.createElement('div', { className: "flex justify-between items-center" },
-                            React.createElement('span', { className: "text-slate-500" }, "Percentage:"),
-                            React.createElement('span', { className: "text-xl font-bold text-white" }, (fullKelly * 100).toFixed(2), "%")
+            return React.createElement('div', { className: "bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-xl p-6 space-y-6" },
+                React.createElement('div', { className: "flex items-center justify-between" },
+                    React.createElement('div', { className: "flex items-center gap-3" },
+                        React.createElement('div', { className: "bg-slate-800 p-3 rounded-lg" },
+                            React.createElement(DollarSign, { className: "w-6 h-6 text-neon-400" })
                         ),
-                        React.createElement('div', { className: "flex justify-between items-center" },
-                            React.createElement('span', { className: "text-slate-500" }, "Stake Amount:"),
-                            React.createElement('span', { className: "text-2xl font-bold text-yellow-400" }, "₦", fullKellyStake.toFixed(2))
-                        ),
-                        React.createElement('div', { className: "text-xs text-slate-600 bg-slate-900 p-2 rounded" },
-                            "⚠️ Aggressive - Maximum growth but higher volatility"
+                        React.createElement('div', null,
+                            React.createElement('h3', { className: "text-lg font-bold text-white" }, "Kelly Criterion Calculator"),
+                            React.createElement('p', { className: "text-xs text-slate-500" }, "Optimal bet sizing for bankroll growth")
                         )
-                    )
-                ),
-                React.createElement('div', null,
-                    React.createElement('div', { className: "text-sm font-semibold text-slate-400 uppercase mb-3" }, 
-                        "Fractional Kelly (", (kellyFraction * 100).toFixed(0), "%)"
                     ),
-                    React.createElement('div', { className: "space-y-3" },
-                        React.createElement('div', { className: "flex justify-between items-center" },
-                            React.createElement('span', { className: "text-slate-500" }, "Percentage:"),
-                            React.createElement('span', { className: "text-xl font-bold text-white" }, (fractionalKelly * 100).toFixed(2), "%")
+                    hasEdge 
+                        ? React.createElement('div', { className: "px-4 py-2 rounded-lg border bg-neon-500/20 text-neon-400 border-neon-500/50 font-bold text-sm" }, "POSITIVE EDGE")
+                        : React.createElement('div', { className: "px-4 py-2 rounded-lg border bg-red-500/20 text-red-400 border-red-500/50 font-bold text-sm" }, "NEGATIVE EDGE")
+                ),
+
+                React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-4" },
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Bankroll (₦)"),
+                        React.createElement('input', { 
+                            type: "number", 
+                            step: "100",
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
+                            value: bankroll, 
+                            onChange: (e) => setBankroll(parseFloat(e.target.value) || 0) 
+                        })
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Market"),
+                        React.createElement('select', { 
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
+                            value: selectedMarket, 
+                            onChange: (e) => setSelectedMarket(e.target.value) 
+                        },
+                            React.createElement('option', { value: "home" }, "Home Win"),
+                            React.createElement('option', { value: "draw" }, "Draw"),
+                            React.createElement('option', { value: "away" }, "Away Win"),
+                            prediction.trueGoalLine && React.createElement('option', { value: "over" }, "Over"),
+                            prediction.trueGoalLine && React.createElement('option', { value: "under" }, "Under"),
+                            prediction.btts && React.createElement('option', { value: "btts_yes" }, "BTTS Yes"),
+                            prediction.btts && React.createElement('option', { value: "btts_no" }, "BTTS No")
+                        )
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Bookie Odds"),
+                        React.createElement('input', { 
+                            type: "number", 
+                            step: "0.1",
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
+                            value: bookieOdds, 
+                            onChange: (e) => setBookieOdds(parseFloat(e.target.value) || 1.01) 
+                        })
+                    ),
+                    React.createElement('div', { className: "space-y-2" },
+                        React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Kelly Fraction"),
+                        React.createElement('input', { 
+                            type: "number", 
+                            step: "0.05",
+                            min: "0.1",
+                            max: "1",
+                            className: "w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-500", 
+                            value: kellyFraction, 
+                            onChange: (e) => setKellyFraction(parseFloat(e.target.value) || 0.25) 
+                        })
+                    )
+                ),
+
+                React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-5 gap-4" },
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Model Probability"),
+                        React.createElement('div', { className: "text-2xl font-bold text-white" }, (modelProb * 100).toFixed(2), "%")
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Implied Probability"),
+                        React.createElement('div', { className: "text-2xl font-bold text-slate-400" }, (impliedProb * 100).toFixed(2), "%")
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Edge"),
+                        React.createElement('div', { className: clsx("text-2xl font-bold", edge > 0 ? "text-neon-400" : "text-red-400") }, 
+                            edge > 0 ? "+" : "", (edge * 100).toFixed(2), "%"
+                        )
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Expected Value"),
+                        React.createElement('div', { className: clsx("text-2xl font-bold", expectedValue > 0 ? "text-neon-400" : "text-red-400") }, 
+                            expectedValue > 0 ? "+" : "", expectedValuePercent.toFixed(2), "%"
+                        )
+                    ),
+                    React.createElement('div', { className: "bg-slate-950 p-4 rounded-lg border border-slate-800" },
+                        React.createElement('div', { className: "text-xs text-slate-500 mb-1" }, "Risk Level"),
+                        React.createElement('div', { className: "text-lg font-bold text-white" }, riskLevel)
+                    )
+                ),
+
+                React.createElement('div', { className: "bg-slate-950 border border-slate-800 rounded-lg p-6" },
+                    React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-6" },
+                        React.createElement('div', null,
+                            React.createElement('div', { className: "text-sm font-semibold text-slate-400 uppercase mb-3" }, "Full Kelly (100%)"),
+                            React.createElement('div', { className: "space-y-3" },
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('span', { className: "text-slate-500" }, "Percentage:"),
+                                    React.createElement('span', { className: "text-xl font-bold text-white" }, (fullKelly * 100).toFixed(2), "%")
+                                ),
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('span', { className: "text-slate-500" }, "Stake Amount:"),
+                                    React.createElement('span', { className: "text-2xl font-bold text-yellow-400" }, "₦", fullKellyStake.toFixed(2))
+                                ),
+                                React.createElement('div', { className: "text-xs text-slate-600 bg-slate-900 p-2 rounded" },
+                                    "⚠️ Aggressive - Maximum growth but higher volatility"
+                                )
+                            )
                         ),
-                        React.createElement('div', { className: "flex justify-between items-center" },
-                            React.createElement('span', { className: "text-slate-500" }, "Stake Amount:"),
-                            React.createElement('span', { className: "text-2xl font-bold text-neon-400" }, "₦", fractionalKellyStake.toFixed(2))
-                        ),
-                        React.createElement('div', { className: "flex justify-between items-center" },
-                            React.createElement('span', { className: "text-slate-500" }, "Potential Profit:"),
-                            React.createElement('span', { className: "text-lg font-bold text-neon-400" }, "₦", potentialProfit.toFixed(2))
-                        ),
-                        React.createElement('div', { className: "text-xs text-neon-400 bg-neon-500/10 p-2 rounded" },
-                            "✓ Recommended - Reduces variance and drawdown risk"
+                        React.createElement('div', null,
+                            React.createElement('div', { className: "text-sm font-semibold text-slate-400 uppercase mb-3" }, 
+                                "Fractional Kelly (", (kellyFraction * 100).toFixed(0), "%)"
+                            ),
+                            React.createElement('div', { className: "space-y-3" },
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('span', { className: "text-slate-500" }, "Percentage:"),
+                                    React.createElement('span', { className: "text-xl font-bold text-white" }, (fractionalKelly * 100).toFixed(2), "%")
+                                ),
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('span', { className: "text-slate-500" }, "Stake Amount:"),
+                                    React.createElement('span', { className: "text-2xl font-bold text-neon-400" }, "₦", fractionalKellyStake.toFixed(2))
+                                ),
+                                React.createElement('div', { className: "flex justify-between items-center" },
+                                    React.createElement('span', { className: "text-slate-500" }, "Potential Profit:"),
+                                    React.createElement('span', { className: "text-lg font-bold text-neon-400" }, "₦", potentialProfit.toFixed(2))
+                                ),
+                                React.createElement('div', { className: "text-xs text-neon-400 bg-neon-500/10 p-2 rounded" },
+                                    "✓ Recommended - Reduces variance and drawdown risk"
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                React.createElement('div', { className: "bg-slate-900/50 border border-slate-700 rounded-lg p-4 space-y-2" },
+                    React.createElement('div', { className: "text-xs font-semibold text-slate-400 uppercase mb-2" }, "Kelly Criterion Formula"),
+                    React.createElement('div', { className: "text-sm text-slate-300 font-mono" }, "f* = (bp - q) / b"),
+                    React.createElement('div', { className: "text-xs text-slate-500 space-y-1" },
+                        React.createElement('div', null, "• b = decimal odds - 1 = ", b.toFixed(2)),
+                        React.createElement('div', null, "• p = model probability = ", modelProb.toFixed(4)),
+                        React.createElement('div', null, "• q = 1 - p = ", q.toFixed(4)),
+                        React.createElement('div', { className: "pt-2 border-t border-slate-700 mt-2" },
+                            React.createElement('strong', null, "Note: "), 
+                            "Only bet when Edge > 0. Fractional Kelly (25-50%) is recommended to reduce risk of ruin. All amounts in Naira (₦)."
                         )
                     )
                 )
-            )
-        ),
-
-        // Formula Info
-        React.createElement('div', { className: "bg-slate-900/50 border border-slate-700 rounded-lg p-4 space-y-2" },
-            React.createElement('div', { className: "text-xs font-semibold text-slate-400 uppercase mb-2" }, "Kelly Criterion Formula"),
-            React.createElement('div', { className: "text-sm text-slate-300 font-mono" }, "f* = (bp - q) / b"),
-            React.createElement('div', { className: "text-xs text-slate-500 space-y-1" },
-                React.createElement('div', null, "• b = decimal odds - 1 = ", b.toFixed(2)),
-                React.createElement('div', null, "• p = model probability = ", modelProb.toFixed(4)),
-                React.createElement('div', null, "• q = 1 - p = ", q.toFixed(4)),
-                React.createElement('div', { className: "pt-2 border-t border-slate-700 mt-2" },
-                    React.createElement('strong', null, "Note: "), 
-                    "Only bet when Edge > 0. Fractional Kelly (25-50%) is recommended to reduce risk of ruin."
-                )
-            )
-        )
-    );
-}
+            );
+        }
 
         function BTTSCard({ btts }) {
             const getRecommendationColor = (rec) => {
@@ -850,7 +838,6 @@
             const [editingTeamId, setEditingTeamId] = useState(null);
             const [teamForm, setTeamForm] = useState({ league_id: '', name: '', home_goals_for: 0, home_goals_against: 0, home_games_played: 0, away_goals_for: 0, away_goals_against: 0, away_games_played: 0 });
 
-            // Match History state
             const [selectedTeamForHistory, setSelectedTeamForHistory] = useState('');
             const [matchHistory, setMatchHistory] = useState(Array(5).fill().map((_, i) => ({
                 match_number: i + 1,
@@ -869,7 +856,7 @@
                     setAuthorized(true);
                     refreshData();
                 } else {
-                    alert("Invalid PIN. Try '1234'");
+                    alert("Invalid PIN");
                 }
             };
 
@@ -894,7 +881,6 @@
                             if (history.length > 0) {
                                 setMatchHistory(history);
                             } else {
-                                // Reset to empty 5 matches
                                 setMatchHistory(Array(5).fill().map((_, i) => ({
                                     match_number: i + 1,
                                     goals_scored: 0,
@@ -935,7 +921,6 @@
                 const updated = [...matchHistory];
                 updated[index][field] = parseInt(value) || 0;
                 
-                // Auto-calculate points
                 if (field === 'goals_scored' || field === 'goals_conceded') {
                     const gs = field === 'goals_scored' ? (parseInt(value) || 0) : updated[index].goals_scored;
                     const gc = field === 'goals_conceded' ? (parseInt(value) || 0) : updated[index].goals_conceded;
@@ -979,12 +964,14 @@
                 React.createElement('div', { className: "flex items-center justify-between border-b border-slate-800 pb-4" },
                     React.createElement('h1', { className: "text-3xl font-bold flex items-center gap-2" }, React.createElement(Database, { className: "text-neon-500" }), "Database Management"),
                     React.createElement('div', { className: "flex bg-slate-900 p-1 rounded-lg" },
-                        React.createElement('button', { onClick: () => setActiveTab('leagues'), className: `px-4 py-2 rounded text-sm font-medium ${activeTab === 'leagues' ? 'bg-slate-800 text-white' : 'text-slate-500'}` }, "Leagues"),
-                        React.createElement('button', { onClick: () => setActiveTab('teams'), className: `px-4 py-2 rounded text-sm font-medium ${activeTab === 'teams' ? 'bg-slate-800 text-white' : 'text-slate-500'}` }, "Teams"),
-                        React.createElement('button', { onClick: () => setActiveTab('history'), className: `px-4 py-2 rounded text-sm font-medium ${activeTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-500'}` }, "Match History")
+                        React.createElement('button', { onClick: () => setActiveTab('leagues'), className: clsx("px-4 py-2 rounded text-sm font-medium", activeTab === 'leagues' ? 'bg-slate-800 text-white' : 'text-slate-500') }, "Leagues"),
+                        React.createElement('button', { onClick: () => setActiveTab('teams'), className: clsx("px-4 py-2 rounded text-sm font-medium", activeTab === 'teams' ? 'bg-slate-800 text-white' : 'text-slate-500') }, "Teams"),
+                        React.createElement('button', { onClick: () => setActiveTab('history'), className: clsx("px-4 py-2 rounded text-sm font-medium", activeTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-500') }, "Match History")
                     )
                 ),
-                activeTab === 'leagues' ? React.createElement('div', { className: "grid md:grid-cols-2 gap-8" },
+                
+                // LEAGUES TAB
+                activeTab === 'leagues' && React.createElement('div', { className: "grid md:grid-cols-2 gap-8" },
                     React.createElement('div', { className: "bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4" },
                         React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, editingLeagueId ? 'Edit League' : 'Add League'),
                         React.createElement('input', { placeholder: "Name", className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: leagueForm.name, onChange: (e) => setLeagueForm({...leagueForm, name: e.target.value}) }),
@@ -998,13 +985,19 @@
                         React.createElement('table', { className: "w-full text-left" },
                             React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" }, React.createElement('tr', null, React.createElement('th', { className: "p-4" }, "Name"), React.createElement('th', { className: "p-4 text-right" }, "Edit"))),
                             React.createElement('tbody', { className: "divide-y divide-slate-800" }, leaguesList.map(l => 
-                                React.createElement('tr', { key: l.id }, React.createElement('td', { className: "p-4" }, l.name), React.createElement('td', { className: "p-4 text-right" }, 
-                                    React.createElement('button', { onClick: () => { setLeagueForm({name: l.name, avgHome: l.avg_home_goals, avgAway: l.avg_away_goals}); setEditingLeagueId(l.id); }, className: "text-neon-500" }, React.createElement(Pencil, { className: "w-4 h-4" }))
-                                )                                )
+                                React.createElement('tr', { key: l.id }, 
+                                    React.createElement('td', { className: "p-4" }, l.name), 
+                                    React.createElement('td', { className: "p-4 text-right" }, 
+                                        React.createElement('button', { onClick: () => { setLeagueForm({name: l.name, avgHome: l.avg_home_goals, avgAway: l.avg_away_goals}); setEditingLeagueId(l.id); }, className: "text-neon-500" }, React.createElement(Pencil, { className: "w-4 h-4" }))
+                                    )
+                                )
                             ))
                         )
                     )
-                ) : activeTab === 'teams' ? React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+                ),
+                
+                // TEAMS TAB
+                activeTab === 'teams' && React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
                     React.createElement('div', { className: "lg:col-span-1 bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4" },
                         React.createElement('select', { className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: teamForm.league_id, onChange: (e) => setTeamForm({...teamForm, league_id: e.target.value}) }, leaguesList.map(l => React.createElement('option', { key: l.id, value: l.id }, l.name))),
                         React.createElement('input', { placeholder: "Team Name", className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", value: teamForm.name, onChange: (e) => setTeamForm({...teamForm, name: e.target.value}) }),
@@ -1049,114 +1042,125 @@
                             ))
                         )
                     )
-                )
-// In AdminPage return, after the teams section closes, add:
- activeTab === 'history' ? React.createElement('div', { className: "space-y-6" },
-    React.createElement('div', { className: "bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4" },
-        React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, "Manage Match History"),
-        React.createElement('div', { className: "space-y-2" },
-            React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Select Team"),
-            React.createElement('select', { 
-                className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", 
-                value: selectedTeamForHistory, 
-                onChange: (e) => setSelectedTeamForHistory(e.target.value) 
-            },
-                React.createElement('option', { value: "" }, "Select a team..."),
-                leaguesList.map(league => 
-                    React.createElement('optgroup', { key: league.id, label: league.name },
-                        teamsList.filter(t => t.league_id === league.id).map(t =>
-                            React.createElement('option', { key: t.id, value: t.id }, t.name)
-                        )
-                    )
-                )
-            )
-        )
-    ),
+                ),
 
-    selectedTeamForHistory && React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" },
-        React.createElement('div', { className: "p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between" },
-            React.createElement('h4', { className: "text-lg font-bold text-white" }, "Last 5 Matches"),
-            React.createElement('button', { 
-                onClick: saveMatchHistory, 
-                className: "bg-neon-500 text-black font-bold px-4 py-2 rounded flex items-center gap-2" 
-            },
-                React.createElement(Save, { className: "w-4 h-4" }), "Save History"
-            )
-        ),
-        React.createElement('table', { className: "w-full text-left" },
-            React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" }, 
-                React.createElement('tr', null,
-                    React.createElement('th', { className: "p-4" }, "Match #"),
-                    React.createElement('th', { className: "p-4" }, "Goals Scored"),
-                    React.createElement('th', { className: "p-4" }, "Goals Conceded"),
-                    React.createElement('th', { className: "p-4" }, "Location"),
-                    React.createElement('th', { className: "p-4" }, "Points")
-                )
-            ),
-            React.createElement('tbody', { className: "divide-y divide-slate-800" }, 
-                matchHistory.map((match, idx) => 
-                    React.createElement('tr', { key: idx },
-                        React.createElement('td', { className: "p-4 font-bold text-white" }, match.match_number),
-                        React.createElement('td', { className: "p-4" }, 
-                            React.createElement('input', { 
-                                type: "number", 
-                                min: 0, 
-                                max: 10, 
-                                className: "w-16 bg-slate-950 border border-slate-700 p-2 rounded text-white", 
-                                value: match.goals_scored, 
-                                onChange: (e) => updateMatchHistory(idx, 'goals_scored', e.target.value) 
-                            })
-                        ),
-                        React.createElement('td', { className: "p-4" }, 
-                            React.createElement('input', { 
-                                type: "number", 
-                                min: 0, 
-                                max: 10, 
-                                className: "w-16 bg-slate-950 border border-slate-700 p-2 rounded text-white", 
-                                value: match.goals_conceded, 
-                                onChange: (e) => updateMatchHistory(idx, 'goals_conceded', e.target.value) 
-                            })
-                        ),
-                        React.createElement('td', { className: "p-4" }, 
+                // HISTORY TAB
+                activeTab === 'history' && React.createElement('div', { className: "space-y-6" },
+                    React.createElement('div', { className: "bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4" },
+                        React.createElement('h3', { className: "text-xl font-bold text-white mb-4" }, "Manage Match History"),
+                        React.createElement('div', { className: "space-y-2" },
+                            React.createElement('label', { className: "text-xs font-semibold text-slate-500 uppercase" }, "Select Team"),
                             React.createElement('select', { 
-                                className: "bg-slate-950 border border-slate-700 p-2 rounded text-white", 
-                                value: match.was_home, 
-                                onChange: (e) => updateMatchHistory(idx, 'was_home', e.target.value) 
+                                className: "w-full bg-slate-950 border border-slate-700 p-3 rounded text-white", 
+                                value: selectedTeamForHistory, 
+                                onChange: (e) => setSelectedTeamForHistory(e.target.value) 
                             },
-                                React.createElement('option', { value: 1 }, "Home"),
-                                React.createElement('option', { value: 0 }, "Away")
+                                React.createElement('option', { value: "" }, "Select a team..."),
+                                leaguesList.map(league => 
+                                    React.createElement('optgroup', { key: league.id, label: league.name },
+                                        teamsList.filter(t => t.league_id === league.id).map(t =>
+                                            React.createElement('option', { key: t.id, value: t.id }, t.name)
+                                        )
+                                    )
+                                )
                             )
                         ),
-                        React.createElement('td', { className: "p-4" }, 
-                            React.createElement('span', { 
-                                className: clsx(
-                                    "px-3 py-1 rounded text-sm font-bold", 
-                                    match.points === 3 ? "bg-neon-500/20 text-neon-400" : 
-                                    match.points === 1 ? "bg-yellow-500/20 text-yellow-400" : 
-                                    "bg-red-500/20 text-red-400"
-                                ) 
-                            }, match.points)
+                        React.createElement('div', { className: "text-xs text-slate-500 bg-slate-950 p-3 rounded" },
+                            "Enter the last 5 matches for the selected team (from oldest to most recent). Points are calculated automatically based on goals."
+                        )
+                    ),
+
+                    selectedTeamForHistory && React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" },
+                        React.createElement('div', { className: "p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between" },
+                            React.createElement('h4', { className: "text-lg font-bold text-white" }, "Last 5 Matches"),
+                            React.createElement('button', { 
+                                onClick: saveMatchHistory, 
+                                className: "bg-neon-500 text-black font-bold px-4 py-2 rounded flex items-center gap-2" 
+                            },
+                                React.createElement(Save, { className: "w-4 h-4" }), "Save History"
+                            )
+                        ),
+                        React.createElement('table', { className: "w-full text-left" },
+                            React.createElement('thead', { className: "bg-slate-950 text-slate-500 text-xs uppercase" }, 
+                                React.createElement('tr', null,
+                                    React.createElement('th', { className: "p-4" }, "Match #"),
+                                    React.createElement('th', { className: "p-4" }, "Goals Scored"),
+                                    React.createElement('th', { className: "p-4" }, "Goals Conceded"),
+                                    React.createElement('th', { className: "p-4" }, "Location"),
+                                    React.createElement('th', { className: "p-4" }, "Points"),
+                                    React.createElement('th', { className: "p-4" }, "Result")
+                                )
+                            ),
+                            React.createElement('tbody', { className: "divide-y divide-slate-800" }, 
+                                matchHistory.map((match, idx) => 
+                                    React.createElement('tr', { key: idx },
+                                        React.createElement('td', { className: "p-4 font-bold text-white" }, match.match_number),
+                                        React.createElement('td', { className: "p-4" }, 
+                                            React.createElement('input', { 
+                                                type: "number", 
+                                                min: 0, 
+                                                max: 10, 
+                                                className: "w-16 bg-slate-950 border border-slate-700 p-2 rounded text-white", 
+                                                value: match.goals_scored, 
+                                                onChange: (e) => updateMatchHistory(idx, 'goals_scored', e.target.value) 
+                                            })
+                                        ),
+                                        React.createElement('td', { className: "p-4" }, 
+                                            React.createElement('input', { 
+                                                type: "number", 
+                                                min: 0, 
+                                                max: 10, 
+                                                className: "w-16 bg-slate-950 border border-slate-700 p-2 rounded text-white", 
+                                                value: match.goals_conceded, 
+                                                onChange: (e) => updateMatchHistory(idx, 'goals_conceded', e.target.value) 
+                                            })
+                                        ),
+                                        React.createElement('td', { className: "p-4" }, 
+                                            React.createElement('select', { 
+                                                className: "bg-slate-950 border border-slate-700 p-2 rounded text-white", 
+                                                value: match.was_home, 
+                                                onChange: (e) => updateMatchHistory(idx, 'was_home', e.target.value) 
+                                            },
+                                                React.createElement('option', { value: 1 }, "Home"),
+                                                React.createElement('option', { value: 0 }, "Away")
+                                            )
+                                        ),
+                                        React.createElement('td', { className: "p-4" }, 
+                                            React.createElement('span', { 
+                                                className: clsx(
+                                                    "px-3 py-1 rounded text-sm font-bold", 
+                                                    match.points === 3 ? "bg-neon-500/20 text-neon-400" : 
+                                                    match.points === 1 ? "bg-yellow-500/20 text-yellow-400" : 
+                                                    "bg-red-500/20 text-red-400"
+                                                ) 
+                                            }, match.points)
+                                        ),
+                                        React.createElement('td', { className: "p-4 text-slate-400 font-mono" }, 
+                                            `${match.goals_scored}-${match.goals_conceded}`
+                                        )
+                                    )
+                                )
+                            )
                         )
                     )
                 )
-            )
-        )
-    )
-) : null
             );
         }
 
         function App() {
             const [path, setPath] = useState(window.location.pathname);
+            
             useEffect(() => {
                 const onPopState = () => setPath(window.location.pathname);
                 window.addEventListener('popstate', onPopState);
                 return () => window.removeEventListener('popstate', onPopState);
             }, []);
+            
             const navigate = (newPath) => {
                 window.history.pushState({}, '', newPath);
                 setPath(newPath);
             };
+            
             const PageComponent = path === '/admin' ? AdminPage : HomePage;
 
             return React.createElement(React.Fragment, null,
