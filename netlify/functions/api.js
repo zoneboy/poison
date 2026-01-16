@@ -23,7 +23,17 @@ const teams = pgTable('teams', {
     away_games_played: integer('away_games_played').notNull(),
 });
 
-const schema = { leagues, teams };
+const matchHistory = pgTable('match_history', {
+    id: serial('id').primaryKey(),
+    team_id: integer('team_id').references(() => teams.id).notNull(),
+    match_number: integer('match_number').notNull(), // 1-5 for last 5 matches
+    goals_scored: integer('goals_scored').notNull(),
+    goals_conceded: integer('goals_conceded').notNull(),
+    was_home: integer('was_home').notNull(), // 1 for home, 0 for away
+    points: integer('points').notNull(), // 3 for win, 1 for draw, 0 for loss
+});
+
+const schema = { leagues, teams, matchHistory };
 
 // --- MATH HELPERS ---
 const factorial = (n) => {
@@ -89,6 +99,101 @@ const estimateLambda3 = (homeExpGoals, awayExpGoals, leagueAvgHome, leagueAvgAwa
         // Average game: small positive covariance
         return 0.10;
     }
+};
+
+// --- LINEAR REGRESSION FOR FORM ANALYSIS ---
+const linearRegression = (xValues, yValues) => {
+    const n = xValues.length;
+    if (n === 0) return { slope: 0, intercept: 0, r2: 0 };
+    
+    const sumX = xValues.reduce((a, b) => a + b, 0);
+    const sumY = yValues.reduce((a, b) => a + b, 0);
+    const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+    const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
+    const sumY2 = yValues.reduce((sum, y) => sum + y * y, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
+    // Calculate R-squared
+    const meanY = sumY / n;
+    const ssTotal = yValues.reduce((sum, y) => sum + Math.pow(y - meanY, 2), 0);
+    const ssResidual = yValues.reduce((sum, y, i) => {
+        const predicted = slope * xValues[i] + intercept;
+        return sum + Math.pow(y - predicted, 2);
+    }, 0);
+    const r2 = ssTotal !== 0 ? 1 - (ssResidual / ssTotal) : 0;
+    
+    return { slope, intercept, r2 };
+};
+
+// --- ANALYZE TEAM FORM FROM MATCH HISTORY ---
+const analyzeTeamForm = (matchHistory) => {
+    if (!matchHistory || matchHistory.length === 0) {
+        return {
+            slope: 0,
+            intercept: 0,
+            r2: 0,
+            trend: 'neutral',
+            formModifier: 1.0,
+            avgGoalsScored: 0,
+            avgGoalsConceded: 0,
+            avgPoints: 0,
+            matchData: []
+        };
+    }
+    
+    // Sort by match number (oldest first)
+    const sorted = [...matchHistory].sort((a, b) => a.match_number - b.match_number);
+    
+    // X values: match numbers (1, 2, 3, 4, 5, 6)
+    const xValues = sorted.map(m => m.match_number);
+    
+    // Y values: performance metric (goals scored)
+    const goalsScored = sorted.map(m => m.goals_scored);
+    const goalsConceded = sorted.map(m => m.goals_conceded);
+    const points = sorted.map(m => m.points);
+    
+    // Calculate regression on goals scored
+    const goalsRegression = linearRegression(xValues, goalsScored);
+    
+    // Calculate regression on points
+    const pointsRegression = linearRegression(xValues, points);
+    
+    // Determine trend based on slope
+    let trend = 'neutral';
+    let formModifier = 1.0;
+    
+    if (goalsRegression.slope > 0.15) {
+        trend = 'improving';
+        formModifier = 1.0 + (goalsRegression.slope * 0.5); // Boost up to 1.15
+    } else if (goalsRegression.slope < -0.15) {
+        trend = 'declining';
+        formModifier = 1.0 + (goalsRegression.slope * 0.5); // Reduce down to 0.85
+    }
+    
+    // Cap the modifier to reasonable bounds
+    formModifier = Math.max(0.85, Math.min(1.15, formModifier));
+    
+    return {
+        slope: parseFloat(goalsRegression.slope.toFixed(3)),
+        intercept: parseFloat(goalsRegression.intercept.toFixed(3)),
+        r2: parseFloat(goalsRegression.r2.toFixed(3)),
+        pointsSlope: parseFloat(pointsRegression.slope.toFixed(3)),
+        trend,
+        formModifier: parseFloat(formModifier.toFixed(3)),
+        avgGoalsScored: parseFloat((goalsScored.reduce((a, b) => a + b, 0) / goalsScored.length).toFixed(2)),
+        avgGoalsConceded: parseFloat((goalsConceded.reduce((a, b) => a + b, 0) / goalsConceded.length).toFixed(2)),
+        avgPoints: parseFloat((points.reduce((a, b) => a + b, 0) / points.length).toFixed(2)),
+        matchData: sorted.map(m => ({
+            matchNumber: m.match_number,
+            goalsScored: m.goals_scored,
+            goalsConceded: m.goals_conceded,
+            points: m.points,
+            wasHome: m.was_home === 1,
+            predicted: parseFloat((goalsRegression.slope * m.match_number + goalsRegression.intercept).toFixed(2))
+        }))
+    };
 };
 
 // --- DIXON-COLES CORRELATION FACTOR ---
@@ -349,6 +454,33 @@ exports.handler = async (event, context) => {
                     .orderBy(asc(teams.name));
                 break;
 
+            case 'getMatchHistory':
+                if (!payload?.teamId) throw new Error("Missing teamId");
+                result = await db.select().from(matchHistory)
+                    .where(eq(matchHistory.team_id, payload.teamId))
+                    .orderBy(asc(matchHistory.match_number));
+                break;
+
+            case 'saveMatchHistory':
+                // Delete existing history for this team
+                await db.delete(matchHistory).where(eq(matchHistory.team_id, payload.teamId));
+                
+                // Insert new history
+                if (payload.matches && payload.matches.length > 0) {
+                    await db.insert(matchHistory).values(
+                        payload.matches.map(m => ({
+                            team_id: payload.teamId,
+                            match_number: m.match_number,
+                            goals_scored: m.goals_scored,
+                            goals_conceded: m.goals_conceded,
+                            was_home: m.was_home,
+                            points: m.points
+                        }))
+                    );
+                }
+                result = { success: true };
+                break;
+
             case 'createLeague':
                 await db.insert(leagues).values({
                     name: payload.name,
@@ -407,15 +539,32 @@ exports.handler = async (event, context) => {
 
                 if (!leagueData || !homeTeam || !awayTeam) throw new Error("Invalid selection - Data not found");
 
+                // Fetch match history for form analysis
+                const homeHistory = await db.select().from(matchHistory)
+                    .where(eq(matchHistory.team_id, payload.homeTeamId))
+                    .orderBy(asc(matchHistory.match_number));
+                
+                const awayHistory = await db.select().from(matchHistory)
+                    .where(eq(matchHistory.team_id, payload.awayTeamId))
+                    .orderBy(asc(matchHistory.match_number));
+
+                // Analyze form
+                const homeForm = analyzeTeamForm(homeHistory);
+                const awayForm = analyzeTeamForm(awayHistory);
+
                 const safeDiv = (num, den) => (den === 0 ? 0 : num / den);
 
                 // Calculate attack and defense strengths
-                const homeAttackStr = safeDiv(safeDiv(homeTeam.home_goals_for, homeTeam.home_games_played), leagueData.avg_home_goals);
-                const awayAttackStr = safeDiv(safeDiv(awayTeam.away_goals_for, awayTeam.away_games_played), leagueData.avg_away_goals);
+                let homeAttackStr = safeDiv(safeDiv(homeTeam.home_goals_for, homeTeam.home_games_played), leagueData.avg_home_goals);
+                let awayAttackStr = safeDiv(safeDiv(awayTeam.away_goals_for, awayTeam.away_games_played), leagueData.avg_away_goals);
                 const homeDefenseStr = safeDiv(safeDiv(homeTeam.home_goals_against, homeTeam.home_games_played), leagueData.avg_away_goals);
                 const awayDefenseStr = safeDiv(safeDiv(awayTeam.away_goals_against, awayTeam.away_games_played), leagueData.avg_home_goals);
 
-                // Expected goals (lambda parameters)
+                // Apply form modifiers to attack strength
+                homeAttackStr *= homeForm.formModifier;
+                awayAttackStr *= awayForm.formModifier;
+
+                // Expected goals (lambda parameters) - now adjusted for form
                 const homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
                 const awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
                 const totalExpectedGoals = homeExpGoals + awayExpGoals;
@@ -496,6 +645,8 @@ exports.handler = async (event, context) => {
                     totalExpectedGoals: parseFloat(totalExpectedGoals.toFixed(2)),
                     rho,
                     lambda3: parseFloat(lambda3.toFixed(3)),
+                    homeForm,
+                    awayForm,
                     poisson: {
                         homeWinProb: poissonHomeWin,
                         drawProb: poissonDraw,
