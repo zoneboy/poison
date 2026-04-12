@@ -119,8 +119,19 @@ const parseCsv = (csvText) => {
 
 const FORM_MATCHES = 5;
 
+// Normalize column names: extra leagues use Home/Away/HG/AG/Res instead of HomeTeam/AwayTeam/FTHG/FTAG/FTR
+const normalizeRow = (m) => ({
+    ...m,
+    HomeTeam: m.HomeTeam || m.Home || '',
+    AwayTeam: m.AwayTeam || m.Away || '',
+    FTHG: m.FTHG || m.HG || '',
+    FTAG: m.FTAG || m.AG || '',
+    FTR: m.FTR || m.Res || '',
+});
+
 const processLeagueData = (matches) => {
-    const completed = matches.filter(m => m.FTHG !== '' && m.FTAG !== '' && m.FTR !== '');
+    const normalized = matches.map(normalizeRow);
+    const completed = normalized.filter(m => m.FTHG !== '' && m.FTAG !== '' && m.FTR !== '' && !isNaN(parseInt(m.FTHG)) && !isNaN(parseInt(m.FTAG)));
     if (completed.length === 0) return null;
 
     let totalHomeGoals = 0, totalAwayGoals = 0;
