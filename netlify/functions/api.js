@@ -1,4 +1,3 @@
-/* --- FILE: netlify/functions/api.js [AUTO] --- */
 const { neon } = require('@neondatabase/serverless');
 const { drizzle } = require('drizzle-orm/neon-http');
 const { pgTable, serial, text, real, integer } = require('drizzle-orm/pg-core');
@@ -35,6 +34,146 @@ const matchHistory = pgTable('match_history', {
 });
 
 const schema = { leagues, teams, matchHistory };
+
+// =====================================================================
+// LEAGUE CONFIG (shared with sync.js — keep in sync!)
+// =====================================================================
+const LEAGUE_CONFIG = {
+    'E0':  { name: 'English Premier League',     season: '2526' },
+    'E1':  { name: 'English Championship',       season: '2526' },
+    'SP1': { name: 'Spanish La Liga',             season: '2526' },
+    'D1':  { name: 'German Bundesliga',           season: '2526' },
+    'I1':  { name: 'Italian Serie A',             season: '2526' },
+    'F1':  { name: 'French Ligue 1',              season: '2526' },
+    'N1':  { name: 'Dutch Eredivisie',            season: '2526' },
+    'P1':  { name: 'Portuguese Primeira Liga',    season: '2526' },
+};
+
+// =====================================================================
+// CSV SYNC HELPERS (for manual trigger via API)
+// =====================================================================
+const buildCsvUrl = (code, season) =>
+    `https://www.football-data.co.uk/mmz4281/${season}/${code}.csv`;
+
+const fetchCsv = async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+    return await res.text();
+};
+
+const parseCsv = (csvText) => {
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length < 2) return [];
+    let headerLine = lines[0];
+    if (headerLine.charCodeAt(0) === 0xFEFF) headerLine = headerLine.slice(1);
+    const headers = headerLine.split(',').map(h => h.trim());
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',');
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = values[idx]?.trim() ?? ''; });
+        rows.push(row);
+    }
+    return rows;
+};
+
+const FORM_MATCHES = 5;
+
+const processLeagueData = (matches) => {
+    const completed = matches.filter(m => m.FTHG !== '' && m.FTAG !== '' && m.FTR !== '');
+    if (completed.length === 0) return null;
+
+    let totalHomeGoals = 0, totalAwayGoals = 0;
+    completed.forEach(m => { totalHomeGoals += parseInt(m.FTHG); totalAwayGoals += parseInt(m.FTAG); });
+
+    const avgHomeGoals = parseFloat((totalHomeGoals / completed.length).toFixed(4));
+    const avgAwayGoals = parseFloat((totalAwayGoals / completed.length).toFixed(4));
+
+    const teamStats = {};
+    const ensureTeam = (name) => {
+        if (!teamStats[name]) teamStats[name] = {
+            name, home_goals_for: 0, home_goals_against: 0, home_games_played: 0,
+            away_goals_for: 0, away_goals_against: 0, away_games_played: 0, allMatches: [],
+        };
+    };
+
+    completed.forEach((m, idx) => {
+        const home = m.HomeTeam, away = m.AwayTeam;
+        const hg = parseInt(m.FTHG), ag = parseInt(m.FTAG);
+        const result = m.FTR;
+        ensureTeam(home); ensureTeam(away);
+
+        teamStats[home].home_goals_for += hg; teamStats[home].home_goals_against += ag; teamStats[home].home_games_played += 1;
+        teamStats[away].away_goals_for += ag; teamStats[away].away_goals_against += hg; teamStats[away].away_games_played += 1;
+
+        const homePoints = result === 'H' ? 3 : result === 'D' ? 1 : 0;
+        const awayPoints = result === 'A' ? 3 : result === 'D' ? 1 : 0;
+
+        teamStats[home].allMatches.push({ order: idx, goals_scored: hg, goals_conceded: ag, was_home: 1, points: homePoints });
+        teamStats[away].allMatches.push({ order: idx, goals_scored: ag, goals_conceded: hg, was_home: 0, points: awayPoints });
+    });
+
+    Object.values(teamStats).forEach(t => {
+        t.allMatches.sort((a, b) => a.order - b.order);
+        const recent = t.allMatches.slice(-FORM_MATCHES);
+        t.formMatches = recent.map((m, i) => ({
+            match_number: i + 1, goals_scored: m.goals_scored, goals_conceded: m.goals_conceded,
+            was_home: m.was_home, points: m.points,
+        }));
+        delete t.allMatches;
+    });
+
+    return { avgHomeGoals, avgAwayGoals, teams: teamStats };
+};
+
+const syncLeagueToDb = async (db, leagueCode, leagueName, data) => {
+    const { avgHomeGoals, avgAwayGoals, teams: teamData } = data;
+
+    const existingLeagues = await db.select().from(leagues);
+    let league = existingLeagues.find(l => l.name === leagueName);
+
+    if (league) {
+        await db.update(leagues).set({ avg_home_goals: avgHomeGoals, avg_away_goals: avgAwayGoals }).where(eq(leagues.id, league.id));
+    } else {
+        const inserted = await db.insert(leagues).values({ name: leagueName, avg_home_goals: avgHomeGoals, avg_away_goals: avgAwayGoals }).returning();
+        league = inserted[0];
+    }
+
+    const leagueId = league.id;
+    const existingTeams = await db.select().from(teams).where(eq(teams.league_id, leagueId));
+    const existingTeamMap = {};
+    existingTeams.forEach(t => { existingTeamMap[t.name] = t; });
+
+    for (const teamName of Object.keys(teamData)) {
+        const t = teamData[teamName];
+        const existing = existingTeamMap[teamName];
+        let teamId;
+
+        if (existing) {
+            await db.update(teams).set({
+                home_goals_for: t.home_goals_for, home_goals_against: t.home_goals_against, home_games_played: t.home_games_played,
+                away_goals_for: t.away_goals_for, away_goals_against: t.away_goals_against, away_games_played: t.away_games_played,
+            }).where(eq(teams.id, existing.id));
+            teamId = existing.id;
+        } else {
+            const inserted = await db.insert(teams).values({
+                league_id: leagueId, name: teamName,
+                home_goals_for: t.home_goals_for, home_goals_against: t.home_goals_against, home_games_played: t.home_games_played,
+                away_goals_for: t.away_goals_for, away_goals_against: t.away_goals_against, away_games_played: t.away_games_played,
+            }).returning();
+            teamId = inserted[0].id;
+        }
+
+        await db.delete(matchHistory).where(eq(matchHistory.team_id, teamId));
+        if (t.formMatches && t.formMatches.length > 0) {
+            await db.insert(matchHistory).values(
+                t.formMatches.map(m => ({ team_id: teamId, match_number: m.match_number, goals_scored: m.goals_scored, goals_conceded: m.goals_conceded, was_home: m.was_home, points: m.points }))
+            );
+        }
+    }
+
+    return { leagueId, teamsCount: Object.keys(teamData).length };
+};
 
 // --- MATH HELPERS ---
 const factorial = (n) => {
@@ -79,7 +218,6 @@ const estimateLambda3 = (homeExpGoals, awayExpGoals, leagueAvgHome, leagueAvgAwa
 // --- SAFE LINEAR REGRESSION ---
 const linearRegression = (xValues, yValues) => {
     const n = xValues.length;
-    // Edge case: Not enough data
     if (n < 2) {
         const avgY = n === 1 ? yValues[0] : 0;
         return { slope: 0, intercept: avgY, r2: 0 };
@@ -91,7 +229,6 @@ const linearRegression = (xValues, yValues) => {
     const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
     
     const denominator = (n * sumX2 - sumX * sumX);
-    // Edge case: Division by zero (vertical line)
     if (denominator === 0) {
         return { slope: 0, intercept: sumY / n, r2: 0 };
     }
@@ -99,11 +236,10 @@ const linearRegression = (xValues, yValues) => {
     const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
     
-    // Safety check for NaN results
     return { 
         slope: isNaN(slope) ? 0 : slope, 
         intercept: isNaN(intercept) ? 0 : intercept, 
-        r2: 0 // r2 omitted for speed
+        r2: 0
     };
 };
 
@@ -129,7 +265,6 @@ const analyzeTeamForm = (matchHistory) => {
     const nextMatchX = xValues.length + 1;
     let predictedGD = gdRegression.slope * nextMatchX + gdRegression.intercept;
     
-    // Safety check
     if (isNaN(predictedGD)) predictedGD = 0;
 
     let trend = 'neutral';
@@ -256,7 +391,7 @@ exports.handler = async (event, context) => {
         const { action, payload } = body;
         
         // --- SECURITY ---
-        const WRITE_ACTIONS = ['createLeague', 'updateLeague', 'createTeam', 'updateTeam', 'deleteTeam', 'saveMatchHistory'];
+        const WRITE_ACTIONS = ['createLeague', 'updateLeague', 'createTeam', 'updateTeam', 'deleteTeam', 'saveMatchHistory', 'syncLeague', 'syncAll'];
         if (WRITE_ACTIONS.includes(action)) {
             const authHeader = event.headers['authorization'] || event.headers['Authorization'];
             if (process.env.ADMIN_API_KEY && authHeader !== `Bearer ${process.env.ADMIN_API_KEY}`) {
@@ -310,6 +445,76 @@ exports.handler = async (event, context) => {
                 await db.delete(teams).where(eq(teams.id, payload.teamId));
                 result = { success: true };
                 break;
+
+            // =============================================================
+            // NEW: SYNC ACTIONS
+            // =============================================================
+            case 'getSyncConfig':
+                // Returns the available leagues for syncing
+                result = Object.entries(LEAGUE_CONFIG).map(([code, config]) => ({
+                    code,
+                    name: config.name,
+                    season: config.season,
+                    csvUrl: buildCsvUrl(code, config.season),
+                }));
+                break;
+
+            case 'syncLeague': {
+                // Sync a single league by code (e.g. payload.code = "E0")
+                if (!payload?.code) throw new Error("Missing league code");
+                const config = LEAGUE_CONFIG[payload.code];
+                if (!config) throw new Error(`Unknown league code: ${payload.code}. Available: ${Object.keys(LEAGUE_CONFIG).join(', ')}`);
+
+                const url = buildCsvUrl(payload.code, config.season);
+                const csvText = await fetchCsv(url);
+                const matches = parseCsv(csvText);
+                const data = processLeagueData(matches);
+                if (!data) throw new Error(`No completed matches found for ${config.name}`);
+
+                const syncResult = await syncLeagueToDb(db, payload.code, config.name, data);
+                result = {
+                    success: true,
+                    league: config.name,
+                    code: payload.code,
+                    matchesProcessed: matches.length,
+                    teamsCount: syncResult.teamsCount,
+                    avgHomeGoals: data.avgHomeGoals,
+                    avgAwayGoals: data.avgAwayGoals,
+                    syncedAt: new Date().toISOString(),
+                };
+                break;
+            }
+
+            case 'syncAll': {
+                // Sync ALL configured leagues
+                const results = [];
+                const errors = [];
+
+                for (const [code, config] of Object.entries(LEAGUE_CONFIG)) {
+                    try {
+                        const url = buildCsvUrl(code, config.season);
+                        const csvText = await fetchCsv(url);
+                        const matches = parseCsv(csvText);
+                        const data = processLeagueData(matches);
+                        if (!data) { errors.push({ league: config.name, error: 'No completed matches' }); continue; }
+                        const syncResult = await syncLeagueToDb(db, code, config.name, data);
+                        results.push({ league: config.name, code, teamsCount: syncResult.teamsCount, avgHomeGoals: data.avgHomeGoals, avgAwayGoals: data.avgAwayGoals });
+                    } catch (err) {
+                        errors.push({ league: config.name, code, error: err.message });
+                    }
+                }
+
+                result = {
+                    success: true,
+                    syncedAt: new Date().toISOString(),
+                    leaguesSynced: results.length,
+                    errorsCount: errors.length,
+                    results,
+                    errors: errors.length > 0 ? errors : undefined,
+                };
+                break;
+            }
+
             case 'predict':
                 const [leagueData] = await db.select().from(leagues).where(eq(leagues.id, payload.leagueId)).limit(1);
                 const [homeTeam] = await db.select().from(teams).where(eq(teams.id, payload.homeTeamId)).limit(1);
@@ -336,7 +541,6 @@ exports.handler = async (event, context) => {
                 let homeExpGoals = homeAttackStr * awayDefenseStr * leagueData.avg_home_goals;
                 let awayExpGoals = awayAttackStr * homeDefenseStr * leagueData.avg_away_goals;
                 
-                // Adjust xG based on Form Regression
                 homeExpGoals += regressionAdjustment;
                 awayExpGoals -= regressionAdjustment;
                 

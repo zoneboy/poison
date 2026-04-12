@@ -1,12 +1,13 @@
 {
   "name": "neon-football-predictor",
-  "version": "1.0.0",
-  "description": "Netlify Function App",
+  "version": "1.1.0",
+  "description": "Netlify Function App with Auto-Sync from football-data.co.uk",
   "scripts": {
     "build": "echo 'No build step required'"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",
+    "@netlify/functions": "^2.0.0",
     "drizzle-orm": "^0.30.9"
   }
 }
