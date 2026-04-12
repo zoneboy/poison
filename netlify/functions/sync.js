@@ -36,19 +36,57 @@ const matchHistory = pgTable('match_history', {
 const schema = { leagues, teams, matchHistory };
 
 // =====================================================================
-// LEAGUE CONFIGURATION
-// Add/remove leagues here. The key is the football-data.co.uk CSV code.
-// Season format: "2526" = 2025/26 season.
+// LEAGUE CONFIGURATION — ALL football-data.co.uk leagues
+// type: 'main' = season-by-season files (mmz4281/SEASON/CODE.csv)
+// type: 'extra' = all-seasons file (new/CODE.csv), filtered by Season column
 // =====================================================================
 const LEAGUE_CONFIG = {
-    'E0':  { name: 'English Premier League',     season: '2526' },
-    'E1':  { name: 'English Championship',       season: '2526' },
-    'SP1': { name: 'Spanish La Liga',             season: '2526' },
-    'D1':  { name: 'German Bundesliga',           season: '2526' },
-    'I1':  { name: 'Italian Serie A',             season: '2526' },
-    'F1':  { name: 'French Ligue 1',              season: '2526' },
-    'N1':  { name: 'Dutch Eredivisie',            season: '2526' },
-    'P1':  { name: 'Portuguese Primeira Liga',    season: '2526' },
+    // --- ENGLAND ---
+    'E0':  { name: 'English Premier League',       season: '2526', type: 'main' },
+    'E1':  { name: 'English Championship',          season: '2526', type: 'main' },
+    'E2':  { name: 'English League One',             season: '2526', type: 'main' },
+    'E3':  { name: 'English League Two',             season: '2526', type: 'main' },
+    'EC':  { name: 'English National League',        season: '2526', type: 'main' },
+    // --- SCOTLAND ---
+    'SC0': { name: 'Scottish Premiership',           season: '2526', type: 'main' },
+    'SC1': { name: 'Scottish Championship',          season: '2526', type: 'main' },
+    'SC2': { name: 'Scottish League One',            season: '2526', type: 'main' },
+    'SC3': { name: 'Scottish League Two',            season: '2526', type: 'main' },
+    // --- GERMANY ---
+    'D1':  { name: 'German Bundesliga',              season: '2526', type: 'main' },
+    'D2':  { name: 'German Bundesliga 2',            season: '2526', type: 'main' },
+    // --- SPAIN ---
+    'SP1': { name: 'Spanish La Liga',                season: '2526', type: 'main' },
+    'SP2': { name: 'Spanish La Liga 2',              season: '2526', type: 'main' },
+    // --- ITALY ---
+    'I1':  { name: 'Italian Serie A',                season: '2526', type: 'main' },
+    'I2':  { name: 'Italian Serie B',                season: '2526', type: 'main' },
+    // --- FRANCE ---
+    'F1':  { name: 'French Ligue 1',                 season: '2526', type: 'main' },
+    'F2':  { name: 'French Ligue 2',                 season: '2526', type: 'main' },
+    // --- OTHER EUROPEAN ---
+    'N1':  { name: 'Dutch Eredivisie',               season: '2526', type: 'main' },
+    'B1':  { name: 'Belgian Pro League',             season: '2526', type: 'main' },
+    'P1':  { name: 'Portuguese Primeira Liga',       season: '2526', type: 'main' },
+    'T1':  { name: 'Turkish Super Lig',              season: '2526', type: 'main' },
+    'G1':  { name: 'Greek Super League',             season: '2526', type: 'main' },
+    // --- EXTRA WORLDWIDE LEAGUES ---
+    'ARG': { name: 'Argentine Primera Division',     season: '2025',       type: 'extra' },
+    'AUT': { name: 'Austrian Bundesliga',            season: '2025/2026',  type: 'extra' },
+    'BRA': { name: 'Brazilian Serie A',              season: '2025',       type: 'extra' },
+    'CHN': { name: 'Chinese Super League',           season: '2025',       type: 'extra' },
+    'DNK': { name: 'Danish Superliga',               season: '2025/2026',  type: 'extra' },
+    'FIN': { name: 'Finnish Veikkausliiga',          season: '2025',       type: 'extra' },
+    'IRL': { name: 'Irish Premier Division',         season: '2025',       type: 'extra' },
+    'JPN': { name: 'Japanese J-League',              season: '2025',       type: 'extra' },
+    'MEX': { name: 'Mexican Liga MX',               season: '2025/2026',  type: 'extra' },
+    'NOR': { name: 'Norwegian Eliteserien',          season: '2025',       type: 'extra' },
+    'POL': { name: 'Polish Ekstraklasa',             season: '2025/2026',  type: 'extra' },
+    'ROU': { name: 'Romanian Liga 1',               season: '2025/2026',  type: 'extra' },
+    'RUS': { name: 'Russian Premier League',         season: '2025/2026',  type: 'extra' },
+    'SWE': { name: 'Swedish Allsvenskan',            season: '2025',       type: 'extra' },
+    'SWZ': { name: 'Swiss Super League',             season: '2025/2026',  type: 'extra' },
+    'USA': { name: 'American MLS',                   season: '2025',       type: 'extra' },
 };
 
 // Number of most recent matches to store for form analysis
@@ -58,8 +96,10 @@ const FORM_MATCHES = 5;
 // CSV FETCHING & PARSING
 // =====================================================================
 
-const buildCsvUrl = (code, season) =>
-    `https://www.football-data.co.uk/mmz4281/${season}/${code}.csv`;
+const buildCsvUrl = (code, season, type) =>
+    type === 'extra'
+        ? `https://www.football-data.co.uk/new/${code}.csv`
+        : `https://www.football-data.co.uk/mmz4281/${season}/${code}.csv`;
 
 const fetchCsv = async (url) => {
     const res = await fetch(url);
@@ -278,11 +318,17 @@ exports.handler = async (event, context) => {
     const errors = [];
 
     for (const [code, config] of Object.entries(LEAGUE_CONFIG)) {
-        const url = buildCsvUrl(code, config.season);
+        const url = buildCsvUrl(code, config.season, config.type);
         try {
             console.log(`[SYNC] Fetching ${config.name} from ${url}`);
             const csvText = await fetchCsv(url);
-            const matches = parseCsv(csvText);
+            let matches = parseCsv(csvText);
+
+            // Extra leagues have all seasons in one file — filter to current season
+            if (config.type === 'extra' && matches.length > 0 && matches[0].Season !== undefined) {
+                matches = matches.filter(m => m.Season === config.season);
+            }
+
             console.log(`[SYNC] Parsed ${matches.length} rows for ${config.name}`);
 
             const data = processLeagueData(matches);
